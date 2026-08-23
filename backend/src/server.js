@@ -40,7 +40,11 @@ connectDB().then(async () => {
   await seedInitialData();
 });
 
-// Health check endpoint
+// Root & Health check endpoints
+app.get('/', (req, res) => {
+  res.json({ status: 'OK', message: 'Pooja Coconuts ERP Backend API is running successfully.' });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Pooja Coconuts ERP Backend API is running clean.' });
 });
@@ -62,7 +66,7 @@ app.use('/api/settings', require('./routes/settingRoutes'));
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`====================================================`);
   console.log(`POOJA COCONUTS ERP BACKEND SERVER ACTIVE`);
   console.log(`Running on Port: ${PORT}`);
