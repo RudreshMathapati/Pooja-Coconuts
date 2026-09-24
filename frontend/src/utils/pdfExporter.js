@@ -356,3 +356,180 @@ export const generateInvoicePDF = (sale, settings) => {
   const doc = createInvoicePDFDoc(sale, settings);
   doc.save(`${sale.billNumber}_Invoice.pdf`);
 };
+
+// Generate and Download Printable Monthly Sales Statement Report PDF
+export const generateSalesReportPDF = (salesList = [], periodLabel = 'Monthly', settings = null) => {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const shopTitle = settings?.shopName || 'M/s. POOJA COCONUT & GENERAL MERCHANT';
+  const address = settings?.address || 'Basava Gunj, BASAVAKALYAN - 585 327. Dst. Bidar (Karnataka)';
+  const phone = settings?.phone || '9449458675';
+  const gstin = settings?.gstin || '29AIDPM4039Q1ZN';
+
+  // 1. White Background & Clean Double Frame
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, 210, 297, 'F');
+
+  doc.setDrawColor(30, 41, 59);
+  doc.setLineWidth(0.6);
+  doc.rect(10, 10, 190, 277);
+
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.2);
+  doc.rect(11.5, 11.5, 187, 274);
+
+  // 2. Header Section
+  doc.setTextColor(185, 28, 28);
+  doc.setFont('helvetica', 'bolditalic');
+  doc.setFontSize(8);
+  doc.text('|| Shri Sangameshwar Prasanna ||', 105, 16, { align: 'center' });
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text(shopTitle, 105, 22, { align: 'center' });
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text(address, 105, 26.5, { align: 'center' });
+  doc.text(`Phone: ${phone}  |  GSTIN: ${gstin}`, 105, 30.5, { align: 'center' });
+
+  // 3. Report Title Banner
+  doc.setFillColor(30, 41, 59);
+  doc.roundedRect(12, 33.5, 186, 7.5, 1, 1, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text(`MONTHLY SALES STATEMENT (Date 1 to 30/31)`, 105, 38.5, { align: 'center' });
+
+  // Meta Info Line (Period, Total Bills, Generated Time)
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(51, 65, 85);
+  doc.text(`Report Period: ${periodLabel}`, 13, 45);
+
+  const nowStr = new Date().toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Generated On: ${nowStr}  |  Total Bills: ${salesList.length}`, 197, 45, { align: 'right' });
+
+  // 4. Calculate Totals
+  let totalGrandAmount = 0;
+  let totalQtyCount = 0;
+
+  const tableRows = salesList.map((sale, idx) => {
+    totalGrandAmount += Number(sale.grandTotal) || 0;
+
+    const items = sale.items || [];
+    const itemNames = items.map(i => i.name).join(', ') || 'N/A';
+    
+    let saleQty = 0;
+    const qtyArr = items.map(i => {
+      const q = Number(i.quantity) || 0;
+      saleQty += q;
+      return `${q} ${i.unit || 'Pcs'}`;
+    });
+    totalQtyCount += saleQty;
+
+    const qtyDisplay = qtyArr.length > 0 ? qtyArr.join(', ') : '0 Pcs';
+
+    return [
+      idx + 1,
+      formatDate(sale.date),
+      sale.billNumber,
+      sale.customerName,
+      itemNames,
+      qtyDisplay,
+      formatINR(sale.grandTotal)
+    ];
+  });
+
+  // 5. Generate Crisp Table
+  autoTable(doc, {
+    startY: 48,
+    margin: { left: 12, right: 12, bottom: 18 },
+    head: [['S.No', 'Date', 'Bill #', 'Customer Name', 'Items Name', 'Quantity', 'Amount (Rs.)']],
+    body: tableRows,
+    foot: [[
+      'TOTAL',
+      '',
+      `${salesList.length} Bills`,
+      '',
+      '',
+      `${totalQtyCount} Units`,
+      `Rs. ${formatINR(totalGrandAmount)}`
+    ]],
+    theme: 'plain',
+    styles: {
+      fontSize: 7.5,
+      textColor: [30, 41, 59],
+      cellPadding: 1.8,
+      overflow: 'linebreak',
+      lineColor: [226, 232, 240],
+      lineWidth: 0.2
+    },
+    headStyles: {
+      fillColor: [30, 41, 59],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+      halign: 'center'
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 10 },
+      1: { halign: 'center', cellWidth: 20 },
+      2: { halign: 'center', fontStyle: 'bold', cellWidth: 22 },
+      3: { fontStyle: 'bold', cellWidth: 40 },
+      4: { cellWidth: 54 },
+      5: { halign: 'center', fontStyle: 'bold', cellWidth: 20 },
+      6: { halign: 'right', fontStyle: 'bold', cellWidth: 20 }
+    },
+    footStyles: {
+      fillColor: [15, 23, 42],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+      halign: 'right'
+    },
+    didParseCell: (data) => {
+      if (data.section === 'foot') {
+        if (data.column.index === 0) {
+          data.cell.styles.halign = 'center';
+        } else if (data.column.index === 2 || data.column.index === 5) {
+          data.cell.styles.halign = 'center';
+        }
+      }
+    }
+  });
+
+  // 6. Page Numbers in Footer
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `* Computer generated Monthly Sales Statement - Pooja Coconut ERP  |  Page ${i} of ${pageCount}`,
+      105,
+      283,
+      { align: 'center' }
+    );
+  }
+
+  const cleanPeriod = String(periodLabel).replace(/[^a-zA-Z0-9_-]/g, '_');
+  doc.save(`Monthly_Sales_Report_${cleanPeriod}.pdf`);
+};

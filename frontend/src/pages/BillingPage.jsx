@@ -91,18 +91,32 @@ const BillingPage = () => {
   };
 
   // Item Row Operations
+  const getProductFor = (item) => {
+    if (!item) return null;
+    if (item.product) {
+      const p = products.find(prod => prod._id === item.product);
+      if (p) return p;
+    }
+    if (item.name && item.name.trim()) {
+      return products.find(prod => prod.name.toLowerCase() === item.name.trim().toLowerCase()) || null;
+    }
+    return null;
+  };
+
   const handleItemNameChange = (index, value) => {
     const newItems = [...items];
     newItems[index].name = value;
     setActiveSearchRow(index);
 
     // If exact match found in inventory, auto fill details
-    const foundProd = products.find(p => p.name.toLowerCase() === value.toLowerCase());
+    const foundProd = products.find(p => p.name.toLowerCase() === value.toLowerCase().trim());
     if (foundProd) {
       newItems[index].product = foundProd._id;
       newItems[index].unit = foundProd.unit;
       newItems[index].rate = foundProd.rate;
       newItems[index].total = newItems[index].quantity * foundProd.rate;
+    } else {
+      newItems[index].product = '';
     }
 
     setItems(newItems);
@@ -150,6 +164,32 @@ const BillingPage = () => {
   // Filter filled items
   const activeFilledItems = items.filter(i => i.name && i.name.trim().length > 0);
 
+  // Check if any filled item violates inventory stock rules
+  const getStockErrors = () => {
+    const errors = [];
+    const prodQtyMap = {};
+
+    activeFilledItems.forEach((item, index) => {
+      const prod = getProductFor(item);
+      const qty = Number(item.quantity) || 0;
+      if (!prod) {
+        errors.push(`Row #${index + 1} ("${item.name}"): Not registered in inventory.`);
+      } else if (prod.stock <= 0) {
+        errors.push(`Row #${index + 1} ("${prod.name}"): 0 ${prod.unit} in stock. Cannot sell zero-inventory product.`);
+      } else {
+        prodQtyMap[prod._id] = (prodQtyMap[prod._id] || 0) + qty;
+        if (prodQtyMap[prod._id] > prod.stock) {
+          errors.push(`Row #${index + 1} ("${prod.name}"): Requested quantity (${prodQtyMap[prod._id]} ${prod.unit}) exceeds available stock (${prod.stock} ${prod.unit}).`);
+        }
+      }
+    });
+
+    return errors;
+  };
+
+  const stockErrors = getStockErrors();
+  const hasStockError = stockErrors.length > 0;
+
   // Calculations
   const subtotal = items.reduce((sum, i) => sum + (Number(i.total) || 0), 0);
   const gstAmount = Math.round((subtotal * (Number(gstPercent) || 0)) / 100);
@@ -168,10 +208,15 @@ const BillingPage = () => {
       return;
     }
 
-    const validItemsToSave = items.filter(i => i.name && i.name.trim().length > 0 && i.quantity > 0);
+    const validItemsToSave = items.filter(i => i.name && i.name.trim().length > 0 && Number(i.quantity) > 0);
 
     if (validItemsToSave.length === 0) {
-      setToast({ message: 'Please type/select item name for at least 1 bill row!', type: 'error' });
+      setToast({ message: 'Please enter at least 1 valid item with quantity greater than 0!', type: 'error' });
+      return;
+    }
+
+    if (hasStockError) {
+      setToast({ message: stockErrors[0], type: 'error' });
       return;
     }
 
@@ -352,6 +397,12 @@ const BillingPage = () => {
                       p.name.toLowerCase().includes((item.name || '').toLowerCase())
                     );
 
+                    const matchedProd = getProductFor(item);
+                    const itemQty = Number(item.quantity) || 0;
+                    const isZeroStock = matchedProd && (matchedProd.stock <= 0);
+                    const isExceedingStock = matchedProd && matchedProd.stock > 0 && itemQty > matchedProd.stock;
+                    const isUnknownProduct = item.name && item.name.trim().length > 0 && !matchedProd;
+
                     return (
                       <tr key={idx} className="relative hover:bg-slate-50 dark:hover:bg-slate-800/80">
                         
@@ -377,10 +428,33 @@ const BillingPage = () => {
                                 setActiveSearchRow(idx);
                               }}
                               onChange={(e) => handleItemNameChange(idx, e.target.value)}
-                              className="w-full pl-7 pr-7 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              className={`w-full pl-7 pr-7 py-1.5 bg-white dark:bg-slate-800 border rounded text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 ${
+                                isZeroStock || isExceedingStock || isUnknownProduct
+                                  ? 'border-rose-400 focus:ring-rose-500'
+                                  : 'border-slate-300 dark:border-slate-600 focus:ring-emerald-500'
+                              }`}
                             />
                             <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </div>
+
+                          {/* Inline Stock Feedback Badges */}
+                          {isZeroStock && (
+                            <div className="mt-1 flex items-center gap-1 text-[10px] font-extrabold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-300 dark:border-rose-900">
+                              <span>❌ Out of Stock (0 {matchedProd.unit} in inventory) — Cannot sell</span>
+                            </div>
+                          )}
+
+                          {isExceedingStock && (
+                            <div className="mt-1 flex items-center gap-1 text-[10px] font-extrabold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-900">
+                              <span>⚠️ Max stock limit: {matchedProd.stock} {matchedProd.unit}. Cannot sell {itemQty}</span>
+                            </div>
+                          )}
+
+                          {isUnknownProduct && (
+                            <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-rose-500">
+                              <span>⚠️ Product not registered in inventory catalog</span>
+                            </div>
+                          )}
 
                           {/* Autocomplete Dropdown */}
                           {activeSearchRow === idx && (
@@ -388,28 +462,49 @@ const BillingPage = () => {
                               onClick={(e) => e.stopPropagation()}
                               className="absolute left-2 right-2 top-10 z-50 bg-white dark:bg-slate-800 border-2 border-slate-400 dark:border-slate-600 rounded shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700"
                             >
-                              <div className="px-3 py-1 bg-slate-800 text-[10px] uppercase font-bold text-white">
-                                Inventory Items ({matchingSuggestions.length})
+                              <div className="px-3 py-1 bg-slate-800 text-[10px] uppercase font-bold text-white flex justify-between">
+                                <span>Inventory Catalog ({matchingSuggestions.length})</span>
+                                <span className="text-slate-300">Available Stock</span>
                               </div>
                               {matchingSuggestions.length > 0 ? (
-                                matchingSuggestions.map((prod) => (
-                                  <div
-                                    key={prod._id}
-                                    onClick={() => handleSelectProductSuggestion(idx, prod)}
-                                    className="px-3 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-950 cursor-pointer flex items-center justify-between"
-                                  >
-                                    <div>
-                                      <p className="font-bold text-xs text-slate-900 dark:text-white">{prod.name}</p>
-                                      <p className="text-[10px] text-slate-500">Stock: {prod.stock} {prod.unit}</p>
+                                matchingSuggestions.map((prod) => {
+                                  const prodOutOfStock = (prod.stock || 0) <= 0;
+                                  return (
+                                    <div
+                                      key={prod._id}
+                                      onClick={() => handleSelectProductSuggestion(idx, prod)}
+                                      className={`px-3 py-2 cursor-pointer flex items-center justify-between ${
+                                        prodOutOfStock
+                                          ? 'bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-900/40'
+                                          : 'hover:bg-emerald-50 dark:hover:bg-emerald-950'
+                                      }`}
+                                    >
+                                      <div>
+                                        <div className="flex items-center gap-1.5">
+                                          <p className="font-bold text-xs text-slate-900 dark:text-white">{prod.name}</p>
+                                          {prodOutOfStock ? (
+                                            <span className="text-[9px] px-1.5 py-0.2 bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300 rounded font-bold uppercase">
+                                              Out of Stock (0)
+                                            </span>
+                                          ) : (
+                                            <span className="text-[9px] px-1.5 py-0.2 bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 rounded font-semibold">
+                                              {prod.stock} {prod.unit}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-[10px] text-slate-500">
+                                          Unit: {prod.unit} | Stock: <b className={prodOutOfStock ? 'text-rose-600' : 'text-slate-700 dark:text-slate-300'}>{prod.stock}</b>
+                                        </p>
+                                      </div>
+                                      <span className="text-xs font-extrabold text-emerald-600">
+                                        ₹{prod.rate} / {prod.unit}
+                                      </span>
                                     </div>
-                                    <span className="text-xs font-extrabold text-emerald-600">
-                                      ₹{prod.rate} / {prod.unit}
-                                    </span>
-                                  </div>
-                                ))
+                                  );
+                                })
                               ) : (
                                 <div className="px-3 py-2 text-[11px] text-slate-400 text-center">
-                                  No inventory match. Item will save as custom text.
+                                  No inventory match. Please purchase it first.
                                 </div>
                               )}
                             </div>
@@ -431,12 +526,23 @@ const BillingPage = () => {
                           <input
                             type="number"
                             min="0"
+                            max={matchedProd ? matchedProd.stock : undefined}
                             placeholder="0"
                             value={item.quantity}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleItemQuantityRateChange(idx, 'quantity', e.target.value)}
-                            className="w-full px-1 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-xs text-center font-extrabold focus:outline-none"
+                            className={`w-full px-1 py-1.5 bg-white dark:bg-slate-800 border rounded text-xs text-center font-extrabold focus:outline-none ${
+                              isZeroStock || isExceedingStock
+                                ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-600 focus:ring-1 focus:ring-rose-500'
+                                : 'border-slate-300 dark:border-slate-600 focus:ring-1 focus:ring-emerald-500'
+                            }`}
                           />
+                          {isZeroStock && (
+                            <span className="block text-[9px] font-bold text-rose-600 mt-0.5">0 Avail</span>
+                          )}
+                          {isExceedingStock && (
+                            <span className="block text-[9px] font-bold text-rose-600 mt-0.5">Max {matchedProd.stock}</span>
+                          )}
                         </td>
 
                         {/* Rate */}
@@ -605,13 +711,32 @@ const BillingPage = () => {
 
           </div>
 
+          {/* Stock Validation Error Alert Banner */}
+          {hasStockError && (
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-400 dark:border-rose-800 rounded-lg text-rose-800 dark:text-rose-200 text-xs space-y-1.5 shadow-sm">
+              <div className="flex items-center gap-1.5 font-black text-rose-900 dark:text-rose-100 uppercase tracking-wide">
+                <span className="text-base">🚫</span>
+                <span>Cannot Generate Bill — Inventory Stock Restriction:</span>
+              </div>
+              <ul className="list-disc list-inside text-[11px] font-semibold space-y-0.5 ml-1">
+                {stockErrors.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+              <p className="text-[10px] text-rose-600 dark:text-rose-400 font-medium italic">
+                * Please adjust quantities to match available inventory, or add a Shop Purchase bill from your supplier to restock before selling.
+              </p>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t-2 border-slate-300 dark:border-slate-700">
             <button
               type="button"
-              disabled={loading}
+              disabled={loading || hasStockError}
               onClick={() => handleSaveBill('SAVE')}
-              className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded shadow transition disabled:opacity-50"
+              title={hasStockError ? 'Resolve stock errors before saving' : 'Save Bill'}
+              className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded shadow transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Save className="w-4 h-4" />
               <span>Save Bill</span>
@@ -619,9 +744,10 @@ const BillingPage = () => {
 
             <button
               type="button"
-              disabled={loading}
+              disabled={loading || hasStockError}
               onClick={() => handleSaveBill('WHATSAPP')}
-              className="flex items-center gap-1.5 px-5 py-2 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded shadow transition disabled:opacity-50"
+              title={hasStockError ? 'Resolve stock errors before saving' : 'Save & Send WhatsApp'}
+              className="flex items-center gap-1.5 px-5 py-2 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded shadow transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Send className="w-4 h-4" />
               <span>Save & Send WhatsApp</span>
@@ -629,9 +755,10 @@ const BillingPage = () => {
 
             <button
               type="button"
-              disabled={loading}
+              disabled={loading || hasStockError}
               onClick={() => handleSaveBill('PDF')}
-              className="flex items-center gap-2 px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded shadow transition disabled:opacity-50"
+              title={hasStockError ? 'Resolve stock errors before saving' : 'Generate PDF'}
+              className="flex items-center gap-2 px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded shadow transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <FileText className="w-4 h-4" />
               <span>Generate PDF</span>

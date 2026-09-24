@@ -69,8 +69,43 @@ const getDashboardStats = async (req, res, next) => {
     ]);
     const pendingSupplierPayments = pendingSuppliersData[0] ? pendingSuppliersData[0].total : 0;
 
-    // 7. Today's Estimated Profit (Today Sales minus estimated cost of goods)
-    const todayProfit = Math.max(0, todaySales - (todaySales * 0.78)); // ~22% margin baseline or exact sales minus shop purchases
+    // 7. Today's Real Profit: (Selling Rate - Purchase Rate) * Quantity for each item sold today
+    const todaySalesForProfit = await Sale.find({
+      date: { $gte: todayStart, $lte: todayEnd }
+    });
+
+    const allProducts = await Product.find();
+    const productMap = new Map();
+    allProducts.forEach(p => productMap.set(p._id.toString(), p));
+
+    let todayProfit = 0;
+    for (const sale of todaySalesForProfit) {
+      if (!sale.items) continue;
+      for (const item of sale.items) {
+        let pRate = item.purchaseRate;
+        if ((pRate === undefined || pRate === null || pRate === 0) && item.product) {
+          const pid = item.product.toString();
+          const pDoc = productMap.get(pid);
+          if (pDoc && pDoc.purchaseRate) {
+            pRate = pDoc.purchaseRate;
+          }
+        }
+        if ((pRate === undefined || pRate === null || pRate === 0) && item.name) {
+          const pDoc = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
+          if (pDoc && pDoc.purchaseRate) {
+            pRate = pDoc.purchaseRate;
+          }
+        }
+
+        const sellRate = Number(item.rate) || 0;
+        const buyRate = Number(pRate) || 0;
+        const qty = Number(item.quantity) || 0;
+
+        // Exact profit per item sold = (Sale Rate - Purchase Rate) * Quantity
+        const itemProfit = (sellRate - buyRate) * qty;
+        todayProfit += itemProfit;
+      }
+    }
 
     // 8. Recent Bills & Purchases
     const recentBills = await Sale.find().sort({ date: -1 }).limit(5);

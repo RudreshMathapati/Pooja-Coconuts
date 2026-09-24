@@ -7,7 +7,7 @@ const InventoryLog = require('../models/InventoryLog');
 const Product = require('../models/Product');
 
 // Helper to resolve start & end dates from query presets
-const getDateRange = (filter, customStart, customEnd) => {
+const getDateRange = (filter, customStart, customEnd, month) => {
   const now = new Date();
   let start = new Date();
   let end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -27,10 +27,22 @@ const getDateRange = (filter, customStart, customEnd) => {
       start.setHours(0, 0, 0, 0);
       break;
     case 'Monthly':
+      if (month && typeof month === 'string') {
+        const parts = month.split('-');
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(y) && !isNaN(m) && m >= 1 && m <= 12) {
+          start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+          end = new Date(y, m, 0, 23, 59, 59, 999);
+          break;
+        }
+      }
       start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
       break;
     case 'Yearly':
       start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
       break;
     case 'Custom':
       if (customStart) start = new Date(customStart);
@@ -41,6 +53,7 @@ const getDateRange = (filter, customStart, customEnd) => {
       break;
     default:
       start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
       break;
   }
 
@@ -51,8 +64,8 @@ const getDateRange = (filter, customStart, customEnd) => {
 // @route   GET /api/reports
 const getReportsData = async (req, res, next) => {
   try {
-    const { reportType, filter, startDate: customStart, endDate: customEnd } = req.query;
-    const { start, end } = getDateRange(filter, customStart, customEnd);
+    const { reportType, filter, startDate: customStart, endDate: customEnd, month } = req.query;
+    const { start, end } = getDateRange(filter, customStart, customEnd, month);
 
     const dateFilter = { date: { $gte: start, $lte: end } };
 
@@ -60,7 +73,7 @@ const getReportsData = async (req, res, next) => {
 
     switch (reportType) {
       case 'Sales':
-        data = await Sale.find(dateFilter).sort({ date: -1 });
+        data = await Sale.find(dateFilter).sort({ date: 1, createdAt: 1 });
         break;
 
       case 'ShopPurchase':
@@ -98,17 +111,48 @@ const getReportsData = async (req, res, next) => {
       case 'Profit':
         const salesList = await Sale.find(dateFilter);
         const shopPurchasesList = await Purchase.find({ ...dateFilter, purchaseType: 'Shop' });
+        const allProductsList = await Product.find();
+        const prodMap = new Map();
+        allProductsList.forEach(p => prodMap.set(p._id.toString(), p));
         
-        const totalSalesRevenue = salesList.reduce((acc, s) => acc + s.grandTotal, 0);
+        let totalSalesRevenue = 0;
+        let totalCostOfGoodsSold = 0;
+
+        for (const s of salesList) {
+          totalSalesRevenue += (s.grandTotal || 0);
+          if (s.items) {
+            for (const item of s.items) {
+              let pRate = item.purchaseRate;
+              if ((pRate === undefined || pRate === null || pRate === 0) && item.product) {
+                const pid = item.product.toString();
+                const pDoc = prodMap.get(pid);
+                if (pDoc && pDoc.purchaseRate) {
+                  pRate = pDoc.purchaseRate;
+                }
+              }
+              if ((pRate === undefined || pRate === null || pRate === 0) && item.name) {
+                const pDoc = allProductsList.find(p => p.name.toLowerCase() === item.name.toLowerCase());
+                if (pDoc && pDoc.purchaseRate) {
+                  pRate = pDoc.purchaseRate;
+                }
+              }
+              const cost = (Number(pRate) || 0) * (Number(item.quantity) || 0);
+              totalCostOfGoodsSold += cost;
+            }
+          }
+        }
+
+        const netProfit = totalSalesRevenue - totalCostOfGoodsSold;
         const totalShopPurchaseCost = shopPurchasesList.reduce((acc, p) => acc + p.totalAmount, 0);
-        const netProfit = totalSalesRevenue - totalShopPurchaseCost;
 
         data = {
           totalSalesRevenue,
+          totalCostOfGoodsSold: Math.round(totalCostOfGoodsSold),
           totalShopPurchaseCost,
-          netProfit,
+          netProfit: Math.round(netProfit),
           salesCount: salesList.length,
-          purchaseCount: shopPurchasesList.length
+          purchaseCount: shopPurchasesList.length,
+          marginPercent: totalSalesRevenue > 0 ? Math.round((netProfit / totalSalesRevenue) * 100) : 0
         };
         break;
 
@@ -145,6 +189,7 @@ const getReportsData = async (req, res, next) => {
     res.json({
       reportType: reportType || 'Sales',
       filter: filter || 'Monthly',
+      month: month || null,
       startDate: start,
       endDate: end,
       data

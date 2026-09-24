@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Sale = require('../models/Sale');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
@@ -113,6 +114,72 @@ const createSale = async (req, res, next) => {
       return res.status(400).json({ message: 'Customer name and at least one item are required' });
     }
 
+    // Filter valid items
+    const rawItems = items.filter(i => i.name && i.name.trim().length > 0);
+    if (rawItems.length === 0) {
+      return res.status(400).json({ message: 'At least one valid item is required for the bill' });
+    }
+
+    // STRICT INVENTORY CHECK: Resolve products and validate available stock
+    const resolvedItems = [];
+    for (const item of rawItems) {
+      const qty = Number(item.quantity) || 0;
+      if (qty <= 0) {
+        return res.status(400).json({ message: `Quantity for "${item.name}" must be greater than 0` });
+      }
+
+      let prod = null;
+      if (item.product && mongoose.Types.ObjectId.isValid(item.product)) {
+        prod = await Product.findById(item.product);
+      }
+      if (!prod && item.name) {
+        const cleanName = item.name.trim();
+        prod = await Product.findOne({
+          name: new RegExp('^' + cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i')
+        });
+      }
+
+      if (!prod) {
+        return res.status(400).json({
+          message: `Product "${item.name}" is not registered in inventory. Please purchase it first or add it to inventory.`
+        });
+      }
+
+      if (prod.stock <= 0) {
+        return res.status(400).json({
+          message: `Cannot sell "${prod.name}". It is currently OUT OF STOCK (0 ${prod.unit} available in inventory). Please add a Shop Purchase bill to restock.`
+        });
+      }
+
+      resolvedItems.push({
+        product: prod._id,
+        name: prod.name,
+        unit: item.unit || prod.unit || 'Pcs',
+        quantity: qty,
+        rate: Number(item.rate) || prod.rate || 0,
+        purchaseRate: Number(prod.purchaseRate) || 0,
+        total: Number(item.total) || (qty * (Number(item.rate) || prod.rate || 0)),
+        _prodDoc: prod
+      });
+    }
+
+    // Aggregate requested quantities per product to prevent over-selling across multiple bill rows
+    const productQtyMap = new Map();
+    for (const item of resolvedItems) {
+      const pid = item.product.toString();
+      productQtyMap.set(pid, (productQtyMap.get(pid) || 0) + item.quantity);
+    }
+
+    for (const item of resolvedItems) {
+      const pid = item.product.toString();
+      const totalReq = productQtyMap.get(pid);
+      if (totalReq > item._prodDoc.stock) {
+        return res.status(400).json({
+          message: `Insufficient stock for "${item.name}". Available inventory is ${item._prodDoc.stock} ${item.unit}, but total requested to sell is ${totalReq} ${item.unit}. You cannot sell more than available stock.`
+        });
+      }
+    }
+
     // 1. Generate or validate Bill Number
     let billNumber = customBillNo;
     if (!billNumber) {
@@ -153,14 +220,24 @@ const createSale = async (req, res, next) => {
       await customerObj.save();
     }
 
-    // 4. Save Sale Document
+    // 4. Save Sale Document with validated items
+    const saleItems = resolvedItems.map(i => ({
+      product: i.product,
+      name: i.name,
+      unit: i.unit,
+      quantity: i.quantity,
+      rate: i.rate,
+      purchaseRate: i.purchaseRate,
+      total: i.total
+    }));
+
     const sale = await Sale.create({
       billNumber,
       customer: customerObj ? customerObj._id : null,
       customerName: customerName.trim(),
       customerPhone: customerPhone ? customerPhone.trim() : '',
       gstNumber: gstNumber || '',
-      items,
+      items: saleItems,
       subtotal,
       gstPercent: gstPercent || 0,
       gstAmount: gstAmount || 0,
@@ -173,28 +250,24 @@ const createSale = async (req, res, next) => {
       date: date ? new Date(date) : new Date()
     });
 
-    // 5. Update Inventory & Log Stock Movements
-    for (const item of items) {
-      if (item.product) {
-        const prod = await Product.findById(item.product);
-        if (prod) {
-          const prevStock = prod.stock;
-          prod.stock = Math.max(0, prod.stock - item.quantity);
-          await prod.save();
+    // 5. Deduct Inventory & Log Stock Movements accurately
+    for (const rItem of resolvedItems) {
+      const prod = rItem._prodDoc;
+      const prevStock = prod.stock;
+      prod.stock = Math.max(0, prod.stock - rItem.quantity);
+      await prod.save();
 
-          await InventoryLog.create({
-            product: prod._id,
-            productName: prod.name,
-            changeType: 'STOCK_SOLD_SALE',
-            quantity: -item.quantity,
-            previousStock: prevStock,
-            newStock: prod.stock,
-            referenceId: sale.billNumber,
-            date: sale.date,
-            remarks: `Sold in Bill #${sale.billNumber}`
-          });
-        }
-      }
+      await InventoryLog.create({
+        product: prod._id,
+        productName: prod.name,
+        changeType: 'STOCK_SOLD_SALE',
+        quantity: -rItem.quantity,
+        previousStock: prevStock,
+        newStock: prod.stock,
+        referenceId: sale.billNumber,
+        date: sale.date,
+        remarks: `Sold in Bill #${sale.billNumber}`
+      });
     }
 
     // 6. Generate Server PDF Invoice File & WhatsApp Link

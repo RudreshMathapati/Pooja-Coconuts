@@ -6,6 +6,7 @@ const saleItemSchema = new mongoose.Schema({
   unit: { type: String, default: 'Pcs' },
   quantity: { type: Number, required: true, min: 1 },
   rate: { type: Number, required: true, min: 0 },
+  purchaseRate: { type: Number, default: 0 },
   total: { type: Number, required: true, min: 0 }
 });
 

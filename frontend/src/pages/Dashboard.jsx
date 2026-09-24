@@ -123,7 +123,7 @@ const Dashboard = () => {
               </p>
             </div>
 
-            {/* Today Estimated Profit */}
+            {/* Today Real Profit */}
             <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border-2 border-slate-300 dark:border-slate-700 shadow-sm space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Today's Profit</span>
@@ -135,7 +135,7 @@ const Dashboard = () => {
                 {formatCurrency(stats?.todayProfit)}
               </p>
               <p className="text-[10px] text-teal-600 dark:text-teal-400 font-bold uppercase">
-                Net calculated margin
+                Real Margin (Sales − Purchase Cost)
               </p>
             </div>
 
