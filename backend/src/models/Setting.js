@@ -14,7 +14,7 @@ const settingSchema = new mongoose.Schema({
   whatsappApiKey: { type: String, default: '' },
   whatsappApiUrl: { type: String, default: '' },
   invoicePrefix: { type: String, default: 'PC-' },
-  invoiceBaseUrl: { type: String, default: 'http://poojacoconuts.com' },
+  invoiceBaseUrl: { type: String, default: process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || '' },
   defaultGstPercent: { type: Number, default: 0 },
   updatedAt: { type: Date, default: Date.now }
 });

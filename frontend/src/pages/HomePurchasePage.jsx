@@ -52,7 +52,6 @@ const HomePurchasePage = () => {
   useEffect(() => {
     fetchPurchases();
     API.get('/suppliers').then(res => setSuppliersList(res.data || [])).catch(console.error);
-    setBillNumber(`HOME-${Date.now().toString().slice(-5)}`);
   }, []);
 
   const handleSupplierSelect = (nameInput) => {
@@ -113,7 +112,7 @@ const HomePurchasePage = () => {
     try {
       const payload = {
         purchaseType: 'Home',
-        billNumber: billNumber.trim() || `HOME-${Date.now().toString().slice(-6)}`,
+        billNumber: billNumber.trim(),
         supplierName: supplierName.trim(),
         supplierPhone: supplierPhone.trim(),
         items: validItems,
@@ -132,7 +131,7 @@ const HomePurchasePage = () => {
       setSupplierPhone('');
       setRemarks('');
       setAmountPaidInput('');
-      setBillNumber(`HOME-${Date.now().toString().slice(-5)}`);
+      setBillNumber('');
       setItems([createEmptyRow()]);
 
       fetchPurchases();
@@ -172,12 +171,13 @@ const HomePurchasePage = () => {
             </div>
 
             <div className="text-right">
-              <span className="text-xs uppercase font-extrabold text-slate-500 block">EXPENSE ID #</span>
+              <span className="text-xs uppercase font-extrabold text-slate-500 block mb-1">EXPENSE BILL #</span>
               <input
                 type="text"
                 value={billNumber}
                 onChange={(e) => setBillNumber(e.target.value)}
-                className="text-right font-mono font-black text-lg text-purple-700 dark:text-purple-400 bg-slate-100 dark:bg-slate-900 px-3 py-1 rounded border border-slate-300 dark:border-slate-700 outline-none w-40"
+                placeholder="Bill No. (Optional)"
+                className="text-right font-mono font-bold text-sm text-purple-700 dark:text-purple-400 bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded border border-slate-300 dark:border-slate-700 outline-none w-44 placeholder:text-slate-400 placeholder:font-normal placeholder:text-xs"
               />
             </div>
           </div>

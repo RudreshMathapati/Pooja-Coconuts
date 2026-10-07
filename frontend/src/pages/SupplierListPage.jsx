@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Modal from '../components/common/Modal';
 import Toast from '../components/common/Toast';
 import API from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 import { TableSkeleton } from '../components/common/Skeleton';
-import { Search, Plus, Truck } from 'lucide-react';
+import { Search, Plus, Truck, Receipt, ChevronRight } from 'lucide-react';
 
 const SupplierListPage = () => {
+  const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -124,14 +126,20 @@ const SupplierListPage = () => {
                     <th className="py-3.5 px-4">Shop Total Purchased</th>
                     <th className="py-3.5 px-4">Shop Pending Due</th>
                     <th className="py-3.5 px-4">Home Pending Due</th>
+                    <th className="py-3.5 px-4 text-right">Ledger / History</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                   {filtered.length > 0 ? (
                     filtered.map((s) => (
-                      <tr key={s._id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50">
+                      <tr key={s._id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition">
                         <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
-                          {s.name}
+                          <button
+                            onClick={() => navigate(`/suppliers/${s._id}`)}
+                            className="text-left font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            {s.name}
+                          </button>
                           {s.address && <p className="text-[10px] text-slate-400 font-normal">{s.address}</p>}
                         </td>
                         <td className="py-3.5 px-4 font-mono text-slate-600 dark:text-slate-300">{s.phone}</td>
@@ -139,11 +147,21 @@ const SupplierListPage = () => {
                         <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">{formatCurrency(s.shopTotalPurchased)}</td>
                         <td className="py-3.5 px-4 font-extrabold text-rose-600 dark:text-rose-400">{formatCurrency(s.shopPendingAmount)}</td>
                         <td className="py-3.5 px-4 font-bold text-purple-600 dark:text-purple-400">{formatCurrency(s.homePendingAmount)}</td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            onClick={() => navigate(`/suppliers/${s._id}`)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 font-bold rounded-xl text-xs transition"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                            <span>Payment History</span>
+                            <ChevronRight className="w-3 h-3 text-slate-400" />
+                          </button>
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="6" className="py-12 text-center text-slate-400">No suppliers found</td>
+                      <td colSpan="7" className="py-12 text-center text-slate-400">No suppliers found</td>
                     </tr>
                   )}
                 </tbody>

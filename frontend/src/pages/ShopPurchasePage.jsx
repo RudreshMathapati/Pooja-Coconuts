@@ -63,7 +63,6 @@ const ShopPurchasePage = () => {
     fetchPurchases();
     API.get('/products').then(res => setProducts(res.data || [])).catch(console.error);
     API.get('/suppliers').then(res => setSuppliersList(res.data || [])).catch(console.error);
-    setBillNumber(`PUR-${Date.now().toString().slice(-5)}`);
   }, []);
 
   const handleSupplierSelect = (nameInput) => {
@@ -164,7 +163,7 @@ const ShopPurchasePage = () => {
     try {
       const payload = {
         purchaseType: 'Shop',
-        billNumber: billNumber.trim() || `PUR-${Date.now().toString().slice(-6)}`,
+        billNumber: billNumber.trim(),
         supplierName: supplierName.trim(),
         supplierPhone: supplierPhone.trim(),
         items: validFilledItems,
@@ -183,7 +182,7 @@ const ShopPurchasePage = () => {
       setSupplierPhone('');
       setRemarks('');
       setAmountPaidInput('');
-      setBillNumber(`PUR-${Date.now().toString().slice(-5)}`);
+      setBillNumber('');
       setItems([createEmptyRow(), createEmptyRow(), createEmptyRow(), createEmptyRow()]);
 
       fetchPurchases();
@@ -223,12 +222,13 @@ const ShopPurchasePage = () => {
             </div>
 
             <div className="text-right">
-              <span className="text-xs uppercase font-extrabold text-slate-500 block">PURCHASE BILL #</span>
+              <span className="text-xs uppercase font-extrabold text-slate-500 block mb-1">PURCHASE BILL #</span>
               <input
                 type="text"
                 value={billNumber}
                 onChange={(e) => setBillNumber(e.target.value)}
-                className="text-right font-mono font-black text-lg text-blue-700 dark:text-blue-400 bg-slate-100 dark:bg-slate-900 px-3 py-1 rounded border border-slate-300 dark:border-slate-700 outline-none w-40"
+                placeholder="Bill No"
+                className="text-right font-mono font-bold text-sm text-blue-700 dark:text-blue-400 bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded border border-slate-300 dark:border-slate-700 outline-none w-44 placeholder:text-slate-400 placeholder:font-normal placeholder:text-xs"
               />
             </div>
           </div>

@@ -21,14 +21,35 @@ if (!fs.existsSync(invoicesDir)) {
 app.use(cors());
 app.use(express.json());
 
-// Explicit PDF Invoices Route Handler
-app.get('/invoices/:filename', (req, res) => {
+// Explicit PDF Invoices Route Handler with On-Demand Generation for Render
+app.get('/invoices/:filename', async (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(invoicesDir, filename);
   if (fs.existsSync(filePath)) {
     res.setHeader('Content-Type', 'application/pdf');
     return res.sendFile(filePath);
   }
+
+  // Fallback: If missing on disk (e.g. Render restarted/ephemeral container), regenerate from DB on the fly
+  try {
+    const billNumber = filename.replace(/\.pdf$/i, '');
+    const Sale = require('./models/Sale');
+    const Setting = require('./models/Setting');
+    const { generateServerInvoicePDF } = require('./utils/pdfGeneratorServer');
+
+    const sale = await Sale.findOne({ billNumber });
+    if (sale) {
+      const settings = await Setting.findOne();
+      generateServerInvoicePDF(sale, settings);
+      if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Type', 'application/pdf');
+        return res.sendFile(filePath);
+      }
+    }
+  } catch (err) {
+    console.error('Error generating on-demand PDF invoice on Render:', err);
+  }
+
   res.status(404).send(`PDF Invoice ${filename} not found.`);
 });
 

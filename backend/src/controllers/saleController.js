@@ -277,10 +277,13 @@ const createSale = async (req, res, next) => {
 
     try {
       const pdfFilename = generateServerInvoicePDF(sale, settings);
-      let baseUrl = settings?.invoiceBaseUrl;
+      let baseUrl = settings?.invoiceBaseUrl ? settings.invoiceBaseUrl.trim() : '';
+      if (!baseUrl || baseUrl === 'http://poojacoconuts.com') {
+        baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || process.env.BASE_URL || '';
+      }
       if (!baseUrl || baseUrl.includes('localhost')) {
         const hostIp = process.env.PUBLIC_HOST || getLocalIp();
-        baseUrl = `http://${hostIp}`;
+        baseUrl = `http://${hostIp}:5000`;
       }
       pdfUrl = `${baseUrl.replace(/\/$/, '')}/invoices/${pdfFilename}`;
     } catch (pdfErr) {
@@ -300,7 +303,8 @@ const createSale = async (req, res, next) => {
       
       const itemRowsText = items.map(i => `• ${i.name}: ${i.quantity} ${i.unit || 'Pcs'} @ ₹${i.rate} = ₹${i.total}`).join('\n');
 
-      const finalPdfUrl = pdfUrl || `http://${getLocalIp()}:5000/invoices/${sale.billNumber}.pdf`;
+      const fallbackBase = process.env.RENDER_EXTERNAL_URL || `http://${getLocalIp()}:5000`;
+      const finalPdfUrl = pdfUrl || `${fallbackBase.replace(/\/$/, '')}/invoices/${sale.billNumber}.pdf`;
 
       const message = `*|| Shri Sangameshwar Prasanna ||*\n*${shopTitle}*\n(${kannadaTitle})\n${address}\nCell: ${cellPhone} | GSTIN: ${gstinVal}\n----------------------------------------\n*CASH/CREDIT BILL No:* *${sale.billNumber}*\nDate: ${new Date(sale.date).toLocaleDateString('en-IN')}\nShri (Customer): ${sale.customerName}\n----------------------------------------\n*COCONUTS / PARTICULAR ITEMS:*\n${itemRowsText}\n----------------------------------------\n*SUBTOTAL:* ₹${sale.subtotal}\n*GRAND TOTAL:* ₹${sale.grandTotal}\n*AMOUNT PAID:* ₹${sale.amountPaid}\n*PENDING DUE:* ₹${sale.pendingAmount}\n----------------------------------------\n*Download Official PDF Invoice:*\n${finalPdfUrl}\n----------------------------------------\n*${disclaimer}*\nThank you for your business!`;
       

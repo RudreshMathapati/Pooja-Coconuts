@@ -165,9 +165,14 @@ const SupplierDuesPage = () => {
                       const pendingP = purchaseType === 'Shop' ? s.shopPendingAmount : s.homePendingAmount;
 
                       return (
-                        <tr key={s._id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50">
+                        <tr key={s._id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition">
                           <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
-                            {s.name}
+                            <button
+                              onClick={() => navigate(`/suppliers/${s._id}`)}
+                              className="text-left font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                            >
+                              {s.name}
+                            </button>
                             {s.address && <span className="block text-[10px] text-slate-400 font-normal">{s.address}</span>}
                           </td>
                           <td className="py-3.5 px-4 font-mono text-slate-600 dark:text-slate-300">{s.phone}</td>
@@ -175,13 +180,23 @@ const SupplierDuesPage = () => {
                           <td className="py-3.5 px-4 text-emerald-600 font-bold">{formatCurrency(paidP)}</td>
                           <td className="py-3.5 px-4 font-extrabold text-rose-600 dark:text-rose-400 text-sm">{formatCurrency(pendingP)}</td>
                           <td className="py-3.5 px-4 text-right">
-                            <button
-                              onClick={() => handleOpenPay(s)}
-                              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-[11px] shadow-sm transition inline-flex items-center gap-1"
-                            >
-                              <DollarSign className="w-3.5 h-3.5" />
-                              <span>Pay Now</span>
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => navigate(`/suppliers/${s._id}`)}
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-[11px] transition inline-flex items-center gap-1"
+                                title="View Supplier Ledger & Payment History"
+                              >
+                                <History className="w-3.5 h-3.5 text-blue-500" />
+                                <span>Ledger</span>
+                              </button>
+                              <button
+                                onClick={() => handleOpenPay(s)}
+                                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-[11px] shadow-sm transition inline-flex items-center gap-1"
+                              >
+                                <DollarSign className="w-3.5 h-3.5" />
+                                <span>Pay Now</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Lock, Mail } from 'lucide-react';
+import { Lock, Phone } from 'lucide-react';
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('admin@poojacoconuts.com');
-  const [password, setPassword] = useState('admin123');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -17,10 +17,10 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(phone.trim(), password);
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.message || 'Invalid email or password credentials');
+      setError(err.response?.data?.message || 'Invalid phone number or password');
     } finally {
       setLoading(false);
     }
@@ -39,11 +39,11 @@ const LoginPage = () => {
             Pooja Coconuts
           </h1>
           <p className="text-xs text-emerald-400 font-medium tracking-wide uppercase">
-            Wholesale & Retail ERP System
+            Wholesale &amp; Retail ERP System
           </p>
         </div>
 
-        {/* Login Card */}
+        {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div className="p-3.5 bg-rose-950/80 border border-rose-800/80 text-rose-300 text-xs rounded-2xl text-center">
@@ -51,23 +51,25 @@ const LoginPage = () => {
             </div>
           )}
 
+          {/* Phone Number */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Email Address
+              Phone Number
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Phone className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
-                type="email"
+                type="tel"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@poojacoconuts.com"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Enter your phone number"
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-800/90 text-sm rounded-xl border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
               />
             </div>
           </div>
 
+          {/* Password */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
               Password
@@ -94,12 +96,6 @@ const LoginPage = () => {
           </button>
         </form>
 
-        {/* Demo Credentials Note */}
-        <div className="p-3 bg-slate-800/60 border border-slate-700/60 rounded-2xl text-[11px] text-slate-400 text-center space-y-1">
-          <p className="font-semibold text-slate-300">Default Shop Owner Credentials:</p>
-          <p>Email: <span className="font-mono text-emerald-400">admin@poojacoconuts.com</span></p>
-          <p>Password: <span className="font-mono text-emerald-400">admin123</span></p>
-        </div>
       </div>
     </div>
   );

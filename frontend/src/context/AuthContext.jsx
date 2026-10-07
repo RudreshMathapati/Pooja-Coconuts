@@ -27,8 +27,8 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const login = async (email, password) => {
-    const res = await API.post('/auth/login', { email, password });
+  const login = async (phone, password) => {
+    const res = await API.post('/auth/login', { phone, password });
     const { token, ...userData } = res.data;
     localStorage.setItem('pooja_jwt_token', token);
     localStorage.setItem('pooja_user_info', JSON.stringify(userData));

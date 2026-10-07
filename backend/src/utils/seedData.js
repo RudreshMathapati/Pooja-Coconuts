@@ -68,17 +68,16 @@ const syncPaymentsToBills = async () => {
 
 const seedInitialData = async () => {
   try {
-    // 1. Ensure Admin User exists
-    const adminExists = await User.findOne({ email: 'admin@poojacoconuts.com' });
+    // 1. Ensure the one and only Shop Owner admin exists (phone-based login)
+    const adminExists = await User.findOne({ phone: '7019247727' });
     if (!adminExists) {
       await User.create({
-        name: 'Shop Owner (Admin)',
-        email: 'admin@poojacoconuts.com',
-        password: 'admin123',
-        role: 'Admin',
-        phone: '+91 98765 43210'
+        name: 'Shop Owner',
+        phone: '7019247727',
+        password: 'Admin@123',
+        role: 'Admin'
       });
-      console.log('Admin user created: admin@poojacoconuts.com');
+      console.log('Shop Owner admin created: phone 7019247727');
     }
 
     // 2. Ensure Settings exist

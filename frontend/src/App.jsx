@@ -16,6 +16,7 @@ import ShopPurchasePage from './pages/ShopPurchasePage';
 import HomePurchasePage from './pages/HomePurchasePage';
 import SupplierDuesPage from './pages/SupplierDuesPage';
 import SupplierListPage from './pages/SupplierListPage';
+import SupplierDetailPage from './pages/SupplierDetailPage';
 import InventoryPage from './pages/InventoryPage';
 import ReportsPage from './pages/ReportsPage';
 import SearchPage from './pages/SearchPage';
@@ -52,6 +53,7 @@ const ProtectedLayout = () => {
           <Route path="/purchases/home" element={<HomePurchasePage />} />
           <Route path="/suppliers/dues" element={<SupplierDuesPage />} />
           <Route path="/suppliers" element={<SupplierListPage />} />
+          <Route path="/suppliers/:id" element={<SupplierDetailPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/search" element={<SearchPage />} />

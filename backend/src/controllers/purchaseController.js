@@ -1,6 +1,7 @@
 const Purchase = require('../models/Purchase');
 const Product = require('../models/Product');
 const Supplier = require('../models/Supplier');
+const SupplierPayment = require('../models/SupplierPayment');
 const InventoryLog = require('../models/InventoryLog');
 const mongoose = require('mongoose');
 
@@ -134,7 +135,7 @@ const createPurchase = async (req, res, next) => {
     // Save Purchase Document with sanitized items
     const purchase = await Purchase.create({
       purchaseType: pType,
-      billNumber: billNumber || `PUR-${Date.now().toString().slice(-6)}`,
+      billNumber: billNumber ? billNumber.trim() : '',
       supplier: supplierObj ? supplierObj._id : null,
       supplierName: supplierName.trim(),
       supplierPhone: supplierPhone ? supplierPhone.trim() : '',
@@ -147,6 +148,19 @@ const createPurchase = async (req, res, next) => {
       remarks: remarks || '',
       date: date ? new Date(date) : new Date()
     });
+
+    // Record SupplierPayment entry if payment was made at time of purchase
+    if (paidVal > 0 && supplierObj) {
+      await SupplierPayment.create({
+        supplier: supplierObj._id,
+        supplierName: supplierObj.name,
+        purchaseType: pType,
+        amountPaid: paidVal,
+        paymentMethod: 'Cash',
+        date: purchase.date,
+        notes: purchase.billNumber ? `Initial payment on bill #${purchase.billNumber}` : 'Initial payment on purchase'
+      });
+    }
 
     // ONLY FOR SHOP PURCHASES: Increase Product inventory stock
     if (pType === 'Shop') {

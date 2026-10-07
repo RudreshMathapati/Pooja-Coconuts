@@ -66,9 +66,14 @@ const SalesHistoryPage = () => {
     const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
     const itemSummaryText = (sale.items || []).map(i => `• ${i.name}: ${i.quantity} ${i.unit || 'Pcs'} @ ₹${i.rate} = ₹${i.total}`).join('\n');
     
-    let host = settings?.invoiceBaseUrl;
-    if (!host || host.includes('localhost')) {
-      host = `http://${window.location.hostname || 'localhost'}`;
+    let host = settings?.invoiceBaseUrl ? settings.invoiceBaseUrl.trim() : '';
+    if (!host || host === 'http://poojacoconuts.com') {
+      const apiEnv = (import.meta.env.VITE_API_BASE_URL || '').trim();
+      if (apiEnv && apiEnv.startsWith('http')) {
+        host = apiEnv.replace(/\/api\/?$/, '');
+      } else {
+        host = window.location.origin;
+      }
     }
     const cleanHost = host.replace(/\/$/, '');
     const pdfUrl = `${cleanHost}/invoices/${sale.billNumber}.pdf`;

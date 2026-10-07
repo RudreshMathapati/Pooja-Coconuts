@@ -8,19 +8,17 @@ import { TableSkeleton } from '../components/common/Skeleton';
 import {
   FileSpreadsheet,
   FileText,
-  Download,
   Filter,
   TrendingUp,
   DollarSign,
   ShoppingBag,
-  Users,
-  Boxes,
   Calendar,
   Sparkles,
   ChevronLeft,
   ChevronRight,
   RotateCcw,
-  Receipt
+  Receipt,
+  Boxes
 } from 'lucide-react';
 
 const getCurrentMonthString = () => {
@@ -195,10 +193,7 @@ const ReportsPage = () => {
               { id: 'Sales', label: 'Sales Report', icon: TrendingUp },
               { id: 'ShopPurchase', label: 'Shop Purchases', icon: ShoppingBag },
               { id: 'HomePurchase', label: 'Home Expenses', icon: ShoppingBag },
-              { id: 'OutstandingCustomers', label: 'Outstanding Customers', icon: Users },
-              { id: 'OutstandingSuppliers', label: 'Outstanding Suppliers', icon: Users },
               { id: 'Profit', label: 'Profit & Loss', icon: DollarSign },
-              { id: 'Inventory', label: 'Inventory Log', icon: Boxes },
               { id: 'TopLeastProducts', label: 'Top / Least Products', icon: Sparkles },
             ].map(r => {
               const Icon = r.icon;
@@ -226,7 +221,7 @@ const ReportsPage = () => {
               <span>Date Filter:</span>
             </span>
 
-            {['Today', 'Yesterday', 'Weekly', 'Monthly', 'Yearly', 'Custom'].map(f => (
+            {['Today', 'Yesterday', 'Monthly', 'Yearly', 'Custom'].map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}

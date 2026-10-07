@@ -7,55 +7,62 @@ const generateToken = (id) => {
   });
 };
 
-// @desc    Auth user & get token
+// @desc    Auth user & get token (phone + password)
 // @route   POST /api/auth/login
 const loginUser = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const { phone, password } = req.body;
+
+    if (!phone || !password) {
+      return res.status(400).json({ message: 'Phone number and password are required' });
+    }
+
+    const user = await User.findOne({ phone: phone.trim() });
 
     if (user && (await user.matchPassword(password))) {
       res.json({
         _id: user._id,
         name: user.name,
-        email: user.email,
+        phone: user.phone,
         role: user.role,
         token: generateToken(user._id)
       });
     } else {
-      res.status(401).json({ message: 'Invalid email or password' });
+      res.status(401).json({ message: 'Invalid phone number or password' });
     }
   } catch (err) {
     next(err);
   }
 };
 
-// @desc    Register a new user (Admin/Staff)
-// @route   POST /api/auth/register
-const registerUser = async (req, res, next) => {
+// @desc    Change logged-in user's password
+// @route   PUT /api/auth/change-password
+const changePassword = async (req, res, next) => {
   try {
-    const { name, email, password, role, phone } = req.body;
-    const userExists = await User.findOne({ email: email.toLowerCase() });
+    const { currentPassword, newPassword } = req.body;
 
-    if (userExists) {
-      return res.status(400).json({ message: 'User with this email already exists' });
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required' });
     }
 
-    const user = await User.create({
-      name,
-      email: email.toLowerCase(),
-      password,
-      role: role || 'Admin',
-      phone: phone || ''
-    });
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters' });
+    }
 
-    res.status(201).json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      token: generateToken(user._id)
-    });
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ message: 'Password updated successfully' });
   } catch (err) {
     next(err);
   }
@@ -76,4 +83,4 @@ const getUserProfile = async (req, res, next) => {
   }
 };
 
-module.exports = { loginUser, registerUser, getUserProfile };
+module.exports = { loginUser, changePassword, getUserProfile };

@@ -31,7 +31,7 @@ const getSupplierDues = async (req, res, next) => {
   }
 };
 
-// @desc    Get single supplier details with history
+// @desc    Get single supplier details with full payment history ledger
 // @route   GET /api/suppliers/:id
 const getSupplierById = async (req, res, next) => {
   try {
@@ -40,13 +40,88 @@ const getSupplierById = async (req, res, next) => {
       return res.status(404).json({ message: 'Supplier not found' });
     }
 
-    const purchases = await Purchase.find({ supplier: supplier._id }).sort({ date: -1 });
-    const payments = await SupplierPayment.find({ supplier: supplier._id }).sort({ date: -1 });
+    const purchases = await Purchase.find({ supplier: supplier._id }).sort({ date: 1, createdAt: 1 });
+    const payments = await SupplierPayment.find({ supplier: supplier._id }).sort({ date: 1, createdAt: 1 });
+
+    // Build chronological ledger for Shop and Home separately
+    const buildLedger = (type) => {
+      const typePurchases = purchases.filter(p => p.purchaseType === type);
+      const typePayments = payments.filter(p => p.purchaseType === type);
+
+      // Merge into a single event array
+      const events = [
+        ...typePurchases.map(p => ({
+          _id: p._id,
+          type: 'PURCHASE',
+          date: new Date(p.date),
+          createdAt: new Date(p.createdAt),
+          billNumber: p.billNumber || '-',
+          amount: p.totalAmount,
+          items: p.items,
+          remarks: p.remarks || '',
+          paymentStatus: p.paymentStatus,
+          purchaseType: p.purchaseType
+        })),
+        ...typePayments.map(p => ({
+          _id: p._id,
+          type: 'PAYMENT',
+          date: new Date(p.date),
+          createdAt: new Date(p.createdAt),
+          amount: p.amountPaid,
+          notes: p.notes || '',
+          paymentMethod: p.paymentMethod || 'Cash'
+        }))
+      ];
+
+      // Sort by date ascending, then by creation time for same-day entries
+      events.sort((a, b) => {
+        const dateDiff = a.date - b.date;
+        if (dateDiff !== 0) return dateDiff;
+        return a.createdAt - b.createdAt;
+      });
+
+      // Compute running balance
+      let runningBalance = 0;
+      const ledger = events.map(evt => {
+        if (evt.type === 'PURCHASE') {
+          runningBalance += evt.amount;
+        } else {
+          runningBalance = Math.max(0, runningBalance - evt.amount);
+        }
+        return { ...evt, runningBalance };
+      });
+
+      return ledger;
+    };
+
+    const shopLedger = buildLedger('Shop');
+    const homeLedger = buildLedger('Home');
+
+    // Summary stats
+    const shopSummary = {
+      totalPurchased: supplier.shopTotalPurchased || 0,
+      totalPaid: supplier.shopTotalPaid || 0,
+      pendingAmount: supplier.shopPendingAmount || 0,
+      purchaseCount: purchases.filter(p => p.purchaseType === 'Shop').length,
+      paymentCount: payments.filter(p => p.purchaseType === 'Shop').length
+    };
+
+    const homeSummary = {
+      totalPurchased: supplier.homeTotalPurchased || 0,
+      totalPaid: supplier.homeTotalPaid || 0,
+      pendingAmount: supplier.homePendingAmount || 0,
+      purchaseCount: purchases.filter(p => p.purchaseType === 'Home').length,
+      paymentCount: payments.filter(p => p.purchaseType === 'Home').length
+    };
 
     res.json({
       supplier,
       purchases,
-      payments
+      payments,
+      shopLedger,
+      homeLedger,
+      shopSummary,
+      homeSummary
     });
   } catch (err) {
     next(err);
