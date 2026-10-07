@@ -42,6 +42,13 @@ const createPurchase = async (req, res, next) => {
       supplierName,
       supplierPhone,
       items,
+      itemsSubtotal,
+      additionalCharges,
+      additionalChargesTotal,
+      transportCharges,
+      packagingCharges,
+      countingCharges,
+      otherCharges,
       totalAmount,
       amountPaid,
       paymentStatus,
@@ -54,10 +61,6 @@ const createPurchase = async (req, res, next) => {
     if (!supplierName || !items || items.length === 0) {
       return res.status(400).json({ message: 'Supplier name and at least one item are required' });
     }
-
-    const paidVal = paymentStatus === 'Paid' ? Number(totalAmount) : (Number(amountPaid) || 0);
-    const pendingVal = Math.max(0, Number(totalAmount) - paidVal);
-    const finalStatus = pendingVal === 0 ? 'Paid' : (paidVal === 0 ? 'Pending' : 'Partial');
 
     // Clean & resolve items (handle missing or empty string ObjectId)
     const cleanItems = [];
@@ -104,6 +107,24 @@ const createPurchase = async (req, res, next) => {
       return res.status(400).json({ message: 'At least one valid item is required for purchase' });
     }
 
+    // Process and sanitize additional charges
+    const addChargesList = Array.isArray(additionalCharges)
+      ? additionalCharges
+          .filter(c => c && c.name && Number(c.amount) > 0)
+          .map(c => ({ name: String(c.name).trim(), amount: Number(c.amount) }))
+      : [];
+
+    const computedChargesTotal = addChargesList.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+    const finalChargesTotal = Number(additionalChargesTotal) > 0 ? Number(additionalChargesTotal) : computedChargesTotal;
+    const computedItemsSubtotal = cleanItems.reduce((sum, i) => sum + (Number(i.total) || 0), 0);
+    const finalItemsSubtotal = Number(itemsSubtotal) > 0 ? Number(itemsSubtotal) : computedItemsSubtotal;
+    
+    // Grand Total is Items Subtotal + Additional Charges Total
+    const finalTotalAmount = Number(totalAmount) > 0 ? Number(totalAmount) : (finalItemsSubtotal + finalChargesTotal);
+    const paidVal = paymentStatus === 'Paid' ? finalTotalAmount : (Number(amountPaid) || 0);
+    const pendingVal = Math.max(0, finalTotalAmount - paidVal);
+    const finalStatus = pendingVal === 0 ? 'Paid' : (paidVal === 0 ? 'Pending' : 'Partial');
+
     // Supplier Lookup or auto creation
     let supplierObj = null;
     if (supplierPhone && supplierPhone.trim()) {
@@ -121,18 +142,18 @@ const createPurchase = async (req, res, next) => {
     // Update Supplier stats according to Shop vs Home
     if (supplierObj) {
       if (pType === 'Shop') {
-        supplierObj.shopTotalPurchased += Number(totalAmount);
+        supplierObj.shopTotalPurchased += finalTotalAmount;
         supplierObj.shopTotalPaid += paidVal;
         supplierObj.shopPendingAmount += pendingVal;
       } else {
-        supplierObj.homeTotalPurchased += Number(totalAmount);
+        supplierObj.homeTotalPurchased += finalTotalAmount;
         supplierObj.homeTotalPaid += paidVal;
         supplierObj.homePendingAmount += pendingVal;
       }
       await supplierObj.save();
     }
 
-    // Save Purchase Document with sanitized items
+    // Save Purchase Document with sanitized items & additional charges
     const purchase = await Purchase.create({
       purchaseType: pType,
       billNumber: billNumber ? billNumber.trim() : '',
@@ -140,7 +161,14 @@ const createPurchase = async (req, res, next) => {
       supplierName: supplierName.trim(),
       supplierPhone: supplierPhone ? supplierPhone.trim() : '',
       items: cleanItems,
-      totalAmount: Number(totalAmount),
+      itemsSubtotal: finalItemsSubtotal,
+      additionalCharges: addChargesList,
+      additionalChargesTotal: finalChargesTotal,
+      transportCharges: Number(transportCharges) || 0,
+      packagingCharges: Number(packagingCharges) || 0,
+      countingCharges: Number(countingCharges) || 0,
+      otherCharges: Number(otherCharges) || 0,
+      totalAmount: finalTotalAmount,
       amountPaid: paidVal,
       pendingAmount: pendingVal,
       paymentStatus: finalStatus,

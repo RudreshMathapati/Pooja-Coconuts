@@ -9,6 +9,11 @@ const purchaseItemSchema = new mongoose.Schema({
   total: { type: Number, required: true, min: 0 }
 });
 
+const additionalChargeSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  amount: { type: Number, required: true, min: 0 }
+});
+
 const purchaseSchema = new mongoose.Schema({
   purchaseType: { type: String, enum: ['Shop', 'Home'], required: true, default: 'Shop' },
   billNumber: { type: String, default: '' },
@@ -16,6 +21,13 @@ const purchaseSchema = new mongoose.Schema({
   supplierName: { type: String, required: true },
   supplierPhone: { type: String, default: '' },
   items: [purchaseItemSchema],
+  itemsSubtotal: { type: Number, default: 0 },
+  additionalCharges: [additionalChargeSchema],
+  additionalChargesTotal: { type: Number, default: 0 },
+  transportCharges: { type: Number, default: 0 },
+  packagingCharges: { type: Number, default: 0 },
+  countingCharges: { type: Number, default: 0 },
+  otherCharges: { type: Number, default: 0 },
   totalAmount: { type: Number, required: true, min: 0 },
   amountPaid: { type: Number, default: 0 },
   pendingAmount: { type: Number, default: 0 },

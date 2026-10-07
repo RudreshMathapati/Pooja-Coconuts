@@ -7,11 +7,11 @@ import { TableSkeleton } from '../components/common/Skeleton';
 import { Home, Plus, Trash2, Save, Search, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 const createEmptyRow = () => ({
-  name: 'Pure Copra Oil for Family',
-  unit: 'Litre',
-  quantity: 20,
-  rate: 220,
-  total: 4400
+  name: '',
+  unit: 'Pcs',
+  quantity: '',
+  rate: '',
+  total: 0
 });
 
 const HomePurchasePage = () => {
@@ -28,11 +28,23 @@ const HomePurchasePage = () => {
   const [amountPaidInput, setAmountPaidInput] = useState('');
   const [remarks, setRemarks] = useState('');
 
+  // Additional Charges States (Transport, Packaging, Counting, Other)
+  const [transportCharges, setTransportCharges] = useState('');
+  const [packagingCharges, setPackagingCharges] = useState('');
+  const [countingCharges, setCountingCharges] = useState('');
+  const [otherCharges, setOtherCharges] = useState('');
+  const [otherChargesRemark, setOtherChargesRemark] = useState('');
+
   // Suppliers options
   const [suppliersList, setSuppliersList] = useState([]);
 
-  // Multi item rows - Direct on-screen entry
-  const [items, setItems] = useState([createEmptyRow()]);
+  // Multi item rows - 4 blank input rows by default
+  const [items, setItems] = useState([
+    createEmptyRow(),
+    createEmptyRow(),
+    createEmptyRow(),
+    createEmptyRow()
+  ]);
 
   const [formLoading, setFormLoading] = useState(false);
   const [toast, setToast] = useState({ message: '', type: 'success' });
@@ -67,23 +79,25 @@ const HomePurchasePage = () => {
     const item = { ...newItems[index] };
 
     if (field === 'quantity') {
-      item.quantity = Math.max(1, Number(value) || 0);
-      item.total = item.quantity * item.rate;
+      item.quantity = value === '' ? '' : Math.max(0, Number(value) || 0);
     } else if (field === 'rate') {
-      item.rate = Math.max(0, Number(value) || 0);
-      item.total = item.quantity * item.rate;
+      item.rate = value === '' ? '' : Math.max(0, Number(value) || 0);
     } else if (field === 'name') {
       item.name = value;
     } else if (field === 'unit') {
       item.unit = value;
     }
 
+    const q = Number(item.quantity) || 0;
+    const r = Number(item.rate) || 0;
+    item.total = q * r;
+
     newItems[index] = item;
     setItems(newItems);
   };
 
   const addItemRow = () => {
-    setItems([...items, { name: '', unit: 'Pcs', quantity: 1, rate: 0, total: 0 }]);
+    setItems([...items, createEmptyRow()]);
   };
 
   const removeItemRow = (idx) => {
@@ -91,7 +105,15 @@ const HomePurchasePage = () => {
     setItems(items.filter((_, i) => i !== idx));
   };
 
-  const totalAmount = items.reduce((sum, i) => sum + (Number(i.total) || 0), 0);
+  // Additional charges calculations
+  const transportVal = Math.max(0, Number(transportCharges) || 0);
+  const packagingVal = Math.max(0, Number(packagingCharges) || 0);
+  const countingVal = Math.max(0, Number(countingCharges) || 0);
+  const otherVal = Math.max(0, Number(otherCharges) || 0);
+  const additionalChargesTotal = transportVal + packagingVal + countingVal + otherVal;
+
+  const itemsSubtotal = items.reduce((sum, i) => sum + (Number(i.total) || 0), 0);
+  const totalAmount = itemsSubtotal + additionalChargesTotal;
   const actualAmountPaid = paymentStatus === 'Paid' ? totalAmount : (paymentStatus === 'Pending' ? 0 : Number(amountPaidInput) || 0);
   const pendingAmount = Math.max(0, totalAmount - actualAmountPaid);
 
@@ -102,11 +124,26 @@ const HomePurchasePage = () => {
       return;
     }
 
-    const validItems = items.filter(i => i.name && i.name.trim().length > 0);
+    const validItems = items.filter(i => i.name && i.name.trim().length > 0 && Number(i.quantity) > 0);
     if (validItems.length === 0) {
-      setToast({ message: 'Please enter at least 1 item for home expense!', type: 'error' });
+      setToast({ message: 'Please enter at least 1 item with description and quantity (> 0)!', type: 'error' });
       return;
     }
+
+    const sanitizedItems = validItems.map(i => ({
+      name: i.name.trim(),
+      unit: i.unit || 'Pcs',
+      quantity: Number(i.quantity) || 0,
+      rate: Number(i.rate) || 0,
+      total: (Number(i.quantity) || 0) * (Number(i.rate) || 0)
+    }));
+
+    const additionalChargesList = [
+      ...(transportVal > 0 ? [{ name: 'Transport / Freight', amount: transportVal }] : []),
+      ...(packagingVal > 0 ? [{ name: 'Packaging Charges', amount: packagingVal }] : []),
+      ...(countingVal > 0 ? [{ name: 'Counting / Labour', amount: countingVal }] : []),
+      ...(otherVal > 0 ? [{ name: otherChargesRemark.trim() || 'Other Additional Charges', amount: otherVal }] : [])
+    ];
 
     setFormLoading(true);
     try {
@@ -115,7 +152,14 @@ const HomePurchasePage = () => {
         billNumber: billNumber.trim(),
         supplierName: supplierName.trim(),
         supplierPhone: supplierPhone.trim(),
-        items: validItems,
+        items: sanitizedItems,
+        itemsSubtotal,
+        additionalCharges: additionalChargesList,
+        additionalChargesTotal,
+        transportCharges: transportVal,
+        packagingCharges: packagingVal,
+        countingCharges: countingVal,
+        otherCharges: otherVal,
         totalAmount,
         amountPaid: actualAmountPaid,
         paymentStatus: pendingAmount === 0 ? 'Paid' : (actualAmountPaid === 0 ? 'Pending' : 'Partial'),
@@ -126,13 +170,23 @@ const HomePurchasePage = () => {
       await API.post('/purchases', payload);
       setToast({ message: 'Home expense saved! (Isolated: 0 effect on shop inventory stock or sales profits)', type: 'success' });
       
-      // Reset Form
+      // Reset Form with 4 blank input rows
       setSupplierName('');
       setSupplierPhone('');
       setRemarks('');
       setAmountPaidInput('');
       setBillNumber('');
-      setItems([createEmptyRow()]);
+      setTransportCharges('');
+      setPackagingCharges('');
+      setCountingCharges('');
+      setOtherCharges('');
+      setOtherChargesRemark('');
+      setItems([
+        createEmptyRow(),
+        createEmptyRow(),
+        createEmptyRow(),
+        createEmptyRow()
+      ]);
 
       fetchPurchases();
     } catch (err) {
@@ -231,7 +285,7 @@ const HomePurchasePage = () => {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                Home Expense Particulars Table
+                Home Expense Particulars Table (4 Rows Default)
               </span>
               <button
                 type="button"
@@ -249,7 +303,7 @@ const HomePurchasePage = () => {
                   <tr className="bg-slate-800 text-white text-[11px] font-bold uppercase tracking-wider divide-x divide-slate-700">
                     <th className="py-2.5 px-3 w-12 text-center">S.No</th>
                     <th className="py-2.5 px-3 min-w-[240px]">Home Expense Description</th>
-                    <th className="py-2.5 px-3 w-24 text-center">Unit</th>
+                    <th className="py-2.5 px-3 w-28 text-center">Unit</th>
                     <th className="py-2.5 px-3 w-28 text-center">Qty</th>
                     <th className="py-2.5 px-3 w-28 text-center">Rate (₹)</th>
                     <th className="py-2.5 px-3 w-32 text-right">Total Amount (₹)</th>
@@ -267,28 +321,35 @@ const HomePurchasePage = () => {
                       <td className="py-1.5 px-2">
                         <input
                           type="text"
-                          placeholder="e.g. Copra oil for family"
+                          placeholder={`Row #${idx + 1} e.g. Copra oil for family`}
                           value={item.name}
                           onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
                           className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white outline-none"
                         />
                       </td>
 
+                      {/* Locked Unit Dropdown: Owner cannot type or delete characters */}
                       <td className="py-1.5 px-2 text-center">
-                        <input
-                          type="text"
-                          placeholder="Pcs/Litre/KG"
-                          value={item.unit}
+                        <select
+                          value={item.unit || 'Pcs'}
                           onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
-                          className="w-full px-1 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-xs text-center font-semibold font-mono outline-none"
-                        />
+                          className="w-full px-1.5 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-xs text-center font-bold font-mono text-slate-800 dark:text-slate-200 outline-none cursor-pointer focus:ring-1 focus:ring-purple-500"
+                        >
+                          <option value="Pcs">Pcs</option>
+                          <option value="Bags">Bags</option>
+                          <option value="KG">KG</option>
+                          <option value="Quintal">Quintal</option>
+                          <option value="Litre">Litre</option>
+                        </select>
                       </td>
 
                       <td className="py-1.5 px-2 text-center">
                         <input
                           type="number"
-                          min="1"
+                          min="0"
+                          placeholder="0"
                           value={item.quantity}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
                           className="w-full px-1 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-xs text-center font-extrabold outline-none"
                         />
@@ -298,7 +359,9 @@ const HomePurchasePage = () => {
                         <input
                           type="number"
                           min="0"
+                          placeholder="0"
                           value={item.rate}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => handleItemChange(idx, 'rate', e.target.value)}
                           className="w-full px-1 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-xs text-center font-extrabold text-purple-600 outline-none"
                         />
@@ -323,6 +386,102 @@ const HomePurchasePage = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* Additional Charges Section (Transport, Packaging, Counting, etc.) */}
+          <div className="bg-purple-50/60 dark:bg-purple-950/20 border-2 border-purple-200 dark:border-purple-900/60 rounded-xl p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-200/80 dark:border-purple-800/60 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-300 font-bold text-[10px] uppercase font-mono tracking-wider">
+                  + EXTRA EXPENSES
+                </span>
+                <h3 className="font-heading font-black text-xs sm:text-sm text-slate-900 dark:text-white uppercase tracking-wide">
+                  Additional Charges (Transport, Packaging, Counting)
+                </h3>
+              </div>
+              <div className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300">
+                Total Extra Charges: <span className="text-purple-700 dark:text-purple-400 font-extrabold text-sm">{formatCurrency(additionalChargesTotal)}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* 1. Transport Charges */}
+              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-purple-200 dark:border-purple-900/50 shadow-sm">
+                <label className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                  <span>🚚 Transport / Freight</span>
+                  <span className="text-[10px] text-purple-500 font-mono">₹</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={transportCharges}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setTransportCharges(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-purple-500 font-mono"
+                />
+              </div>
+
+              {/* 2. Packaging Charges */}
+              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-purple-200 dark:border-purple-900/50 shadow-sm">
+                <label className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                  <span>📦 Packaging / Bags</span>
+                  <span className="text-[10px] text-purple-500 font-mono">₹</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={packagingCharges}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setPackagingCharges(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-purple-500 font-mono"
+                />
+              </div>
+
+              {/* 3. Counting Charges */}
+              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-purple-200 dark:border-purple-900/50 shadow-sm">
+                <label className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                  <span>🔢 Counting / Labour</span>
+                  <span className="text-[10px] text-purple-500 font-mono">₹</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={countingCharges}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setCountingCharges(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-purple-500 font-mono"
+                />
+              </div>
+
+              {/* 4. Other Additional Charges */}
+              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-purple-200 dark:border-purple-900/50 shadow-sm">
+                <label className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                  <span>➕ Other / Misc</span>
+                  <span className="text-[10px] text-purple-500 font-mono">₹</span>
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={otherCharges}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setOtherCharges(e.target.value)}
+                    className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-purple-500 font-mono"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Note"
+                    value={otherChargesRemark}
+                    onChange={(e) => setOtherChargesRemark(e.target.value)}
+                    className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-[11px] text-slate-700 dark:text-slate-300 outline-none"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -385,9 +544,43 @@ const HomePurchasePage = () => {
             {/* Total Summary */}
             <div className="border-2 border-slate-400 dark:border-slate-600 rounded bg-slate-50 dark:bg-slate-900 p-4 space-y-2 font-mono text-xs">
               <div className="flex justify-between text-slate-700 dark:text-slate-300">
-                <span>Subtotal ({items.length} items):</span>
-                <span className="font-bold">{formatCurrency(totalAmount)}</span>
+                <span>Items Subtotal:</span>
+                <span className="font-bold">{formatCurrency(itemsSubtotal)}</span>
               </div>
+
+              {additionalChargesTotal > 0 && (
+                <div className="space-y-1 py-1 border-t border-dashed border-purple-200 dark:border-purple-800 text-[11px]">
+                  <div className="flex justify-between font-bold text-purple-700 dark:text-purple-400">
+                    <span>+ Additional Charges:</span>
+                    <span>+{formatCurrency(additionalChargesTotal)}</span>
+                  </div>
+                  {transportVal > 0 && (
+                    <div className="flex justify-between text-slate-500 pl-2">
+                      <span>• Transport / Freight:</span>
+                      <span>+{formatCurrency(transportVal)}</span>
+                    </div>
+                  )}
+                  {packagingVal > 0 && (
+                    <div className="flex justify-between text-slate-500 pl-2">
+                      <span>• Packaging / Bags:</span>
+                      <span>+{formatCurrency(packagingVal)}</span>
+                    </div>
+                  )}
+                  {countingVal > 0 && (
+                    <div className="flex justify-between text-slate-500 pl-2">
+                      <span>• Counting / Labour:</span>
+                      <span>+{formatCurrency(countingVal)}</span>
+                    </div>
+                  )}
+                  {otherVal > 0 && (
+                    <div className="flex justify-between text-slate-500 pl-2">
+                      <span>• Other ({otherChargesRemark || 'Misc'}):</span>
+                      <span>+{formatCurrency(otherVal)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="pt-2 border-t-2 border-slate-400 dark:border-slate-600 flex justify-between text-sm font-black text-slate-900 dark:text-white">
                 <span>TOTAL EXPENSE:</span>
                 <span className="text-purple-600 dark:text-purple-400">{formatCurrency(totalAmount)}</span>
@@ -463,7 +656,14 @@ const HomePurchasePage = () => {
                         {p.supplierName}
                         {p.supplierPhone && <span className="block text-[10px] text-slate-400 font-normal">{p.supplierPhone}</span>}
                       </td>
-                      <td className="py-2.5 px-3 font-black font-mono">{formatCurrency(p.totalAmount)}</td>
+                      <td className="py-2.5 px-3 font-black font-mono">
+                        <div>{formatCurrency(p.totalAmount)}</div>
+                        {p.additionalChargesTotal > 0 && (
+                          <div className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold font-sans">
+                            (incl. {formatCurrency(p.additionalChargesTotal)} extra)
+                          </div>
+                        )}
+                      </td>
                       <td className="py-2.5 px-3 font-mono">
                         <span className="text-emerald-600 font-bold">Paid: {formatCurrency(p.amountPaid)}</span>
                         {p.pendingAmount > 0 && <span className="block text-rose-600 font-bold">Due: {formatCurrency(p.pendingAmount)}</span>}

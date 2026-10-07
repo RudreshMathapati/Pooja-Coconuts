@@ -58,6 +58,9 @@ const getSupplierById = async (req, res, next) => {
           billNumber: p.billNumber || '-',
           amount: p.totalAmount,
           items: p.items,
+          itemsSubtotal: p.itemsSubtotal || 0,
+          additionalCharges: p.additionalCharges || [],
+          additionalChargesTotal: p.additionalChargesTotal || 0,
           remarks: p.remarks || '',
           paymentStatus: p.paymentStatus,
           purchaseType: p.purchaseType

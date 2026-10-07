@@ -431,8 +431,18 @@ const SupplierDetailPage = () => {
                                         <td className="py-2.5 px-4 text-right font-bold text-slate-900 dark:text-white">{(item.total || 0).toLocaleString('en-IN')}</td>
                                       </tr>
                                     ))}
+                                    {entry.additionalCharges && entry.additionalCharges.length > 0 && entry.additionalCharges.map((ch, chIdx) => (
+                                      <tr key={`ch-${chIdx}`} className="bg-amber-50/60 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200">
+                                        <td colSpan={4} className="py-2 px-4 font-bold text-[11px] text-amber-800 dark:text-amber-300">
+                                          + {ch.name}
+                                        </td>
+                                        <td className="py-2 px-4 text-right font-black font-mono text-amber-700 dark:text-amber-400">
+                                          +{formatCurrency(ch.amount)}
+                                        </td>
+                                      </tr>
+                                    ))}
                                     <tr className="bg-slate-50 dark:bg-slate-900">
-                                      <td colSpan={4} className="py-2 px-4 text-right text-[11px] font-bold text-slate-500 uppercase">Total</td>
+                                      <td colSpan={4} className="py-2 px-4 text-right text-[11px] font-bold text-slate-500 uppercase">Total Bill Amount</td>
                                       <td className="py-2 px-4 text-right font-extrabold text-slate-900 dark:text-white">
                                         {formatCurrency(entry.amount)}
                                       </td>
