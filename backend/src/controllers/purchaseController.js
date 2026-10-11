@@ -58,6 +58,10 @@ const createPurchase = async (req, res, next) => {
 
     const pType = purchaseType === 'Home' ? 'Home' : 'Shop';
 
+    if (!billNumber || !billNumber.trim()) {
+      return res.status(400).json({ message: 'Purchase bill number is compulsory (enter "NO" if unavailable)' });
+    }
+
     if (!supplierName || !items || items.length === 0) {
       return res.status(400).json({ message: 'Supplier name and at least one item are required' });
     }
@@ -107,11 +111,21 @@ const createPurchase = async (req, res, next) => {
       return res.status(400).json({ message: 'At least one valid item is required for purchase' });
     }
 
-    // Process and sanitize additional charges
+    // Process and sanitize dynamic quantity-based additional charges
     const addChargesList = Array.isArray(additionalCharges)
       ? additionalCharges
-          .filter(c => c && c.name && Number(c.amount) > 0)
-          .map(c => ({ name: String(c.name).trim(), amount: Number(c.amount) }))
+          .filter(c => c && c.name && c.name.trim() && (Number(c.amount) > 0 || (Number(c.quantity) > 0 && Number(c.rate) > 0)))
+          .map(c => {
+            const q = Number(c.quantity) > 0 ? Number(c.quantity) : 1;
+            const r = Number(c.rate) >= 0 ? Number(c.rate) : 0;
+            const amt = Number(c.amount) > 0 ? Number(c.amount) : Math.round(q * r * 100) / 100;
+            return {
+              name: String(c.name).trim(),
+              quantity: q,
+              rate: r,
+              amount: amt
+            };
+          })
       : [];
 
     const computedChargesTotal = addChargesList.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
@@ -121,7 +135,10 @@ const createPurchase = async (req, res, next) => {
     
     // Grand Total is Items Subtotal + Additional Charges Total
     const finalTotalAmount = Number(totalAmount) > 0 ? Number(totalAmount) : (finalItemsSubtotal + finalChargesTotal);
-    const paidVal = paymentStatus === 'Paid' ? finalTotalAmount : (Number(amountPaid) || 0);
+    let paidVal = paymentStatus === 'Paid' ? finalTotalAmount : Math.max(0, Number(amountPaid) || 0);
+    if (paidVal > finalTotalAmount) {
+      paidVal = finalTotalAmount;
+    }
     const pendingVal = Math.max(0, finalTotalAmount - paidVal);
     const finalStatus = pendingVal === 0 ? 'Paid' : (paidVal === 0 ? 'Pending' : 'Partial');
 

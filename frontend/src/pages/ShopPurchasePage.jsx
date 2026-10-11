@@ -4,7 +4,8 @@ import Toast from '../components/common/Toast';
 import API from '../services/api';
 import { formatCurrency, formatDate, getStatusColorClass, getTodayDateString } from '../utils/formatters';
 import { TableSkeleton } from '../components/common/Skeleton';
-import { ShoppingBag, Plus, Trash2, Save, Search, Calendar, Truck, ChevronDown } from 'lucide-react';
+import PurchaseBillModal from '../components/common/PurchaseBillModal';
+import { ShoppingBag, Plus, Trash2, Save, Search, Calendar, Truck, ChevronDown, Eye } from 'lucide-react';
 
 const createEmptyRow = () => ({
   product: '',
@@ -29,12 +30,8 @@ const ShopPurchasePage = () => {
   const [amountPaidInput, setAmountPaidInput] = useState('');
   const [remarks, setRemarks] = useState('');
 
-  // Additional Charges States (Transport, Packaging, Counting, Other)
-  const [transportCharges, setTransportCharges] = useState('');
-  const [packagingCharges, setPackagingCharges] = useState('');
-  const [countingCharges, setCountingCharges] = useState('');
-  const [otherCharges, setOtherCharges] = useState('');
-  const [otherChargesRemark, setOtherChargesRemark] = useState('');
+  // Dynamic Quantity-based & Flat Additional Charges: [{ name, quantity, rate, amount }]
+  const [additionalCharges, setAdditionalCharges] = useState([]);
 
   // Products & Suppliers options
   const [products, setProducts] = useState([]);
@@ -53,6 +50,8 @@ const ShopPurchasePage = () => {
 
   const [formLoading, setFormLoading] = useState(false);
   const [toast, setToast] = useState({ message: '', type: 'success' });
+  const [selectedPurchase, setSelectedPurchase] = useState(null);
+  const [settings, setSettings] = useState(null);
 
   const fetchPurchases = async () => {
     try {
@@ -70,6 +69,7 @@ const ShopPurchasePage = () => {
     fetchPurchases();
     API.get('/products').then(res => setProducts(res.data || [])).catch(console.error);
     API.get('/suppliers').then(res => setSuppliersList(res.data || [])).catch(console.error);
+    API.get('/settings').then(res => setSettings(res.data)).catch(console.error);
   }, []);
 
   const handleSupplierSelect = (nameInput) => {
@@ -150,13 +150,50 @@ const ShopPurchasePage = () => {
       rate: Number(i.rate) || 0
     }));
 
-  // Additional charges calculations
-  const transportVal = Math.max(0, Number(transportCharges) || 0);
-  const packagingVal = Math.max(0, Number(packagingCharges) || 0);
-  const countingVal = Math.max(0, Number(countingCharges) || 0);
-  const otherVal = Math.max(0, Number(otherCharges) || 0);
-  const additionalChargesTotal = transportVal + packagingVal + countingVal + otherVal;
+  // Additional charges dynamic handlers
+  const totalItemsQuantity = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
 
+  const handleAddCharge = (presetName = '') => {
+    setAdditionalCharges(prev => [
+      ...prev,
+      {
+        name: presetName,
+        quantity: totalItemsQuantity > 0 ? totalItemsQuantity : '',
+        rate: '',
+        amount: 0
+      }
+    ]);
+  };
+
+  const handleRemoveCharge = (index) => {
+    setAdditionalCharges(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleChargeChange = (index, field, value) => {
+    const updated = [...additionalCharges];
+    const row = { ...updated[index] };
+
+    if (field === 'name') {
+      row.name = value;
+    } else if (field === 'quantity') {
+      row.quantity = value === '' ? '' : Math.max(0, Number(value) || 0);
+      const q = Number(row.quantity) || 0;
+      const r = Number(row.rate) || 0;
+      row.amount = Math.round(q * r * 100) / 100;
+    } else if (field === 'rate') {
+      row.rate = value;
+      const q = Number(row.quantity) || 0;
+      const r = Number(value) || 0;
+      row.amount = Math.round(q * r * 100) / 100;
+    } else if (field === 'amount') {
+      row.amount = value === '' ? '' : Math.max(0, Number(value) || 0);
+    }
+
+    updated[index] = row;
+    setAdditionalCharges(updated);
+  };
+
+  const additionalChargesTotal = additionalCharges.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
   const itemsSubtotal = items.reduce((sum, i) => sum + (Number(i.total) || 0), 0);
   const totalAmount = itemsSubtotal + additionalChargesTotal;
   const actualAmountPaid = paymentStatus === 'Paid' ? totalAmount : (paymentStatus === 'Pending' ? 0 : Number(amountPaidInput) || 0);
@@ -164,6 +201,11 @@ const ShopPurchasePage = () => {
 
   const handleSubmitPurchase = async (e) => {
     e.preventDefault();
+    if (!billNumber || !billNumber.trim()) {
+      setToast({ message: 'Purchase Bill Number is compulsory! (Enter "NO" or click Set NO button if supplier gave no bill)', type: 'error' });
+      return;
+    }
+
     if (!supplierName.trim()) {
       setToast({ message: 'Supplier / Party Name is required!', type: 'error' });
       return;
@@ -174,12 +216,19 @@ const ShopPurchasePage = () => {
       return;
     }
 
-    const additionalChargesList = [
-      ...(transportVal > 0 ? [{ name: 'Transport / Freight', amount: transportVal }] : []),
-      ...(packagingVal > 0 ? [{ name: 'Packaging Charges', amount: packagingVal }] : []),
-      ...(countingVal > 0 ? [{ name: 'Counting / Labour', amount: countingVal }] : []),
-      ...(otherVal > 0 ? [{ name: otherChargesRemark.trim() || 'Other Additional Charges', amount: otherVal }] : [])
-    ];
+    if (actualAmountPaid > totalAmount) {
+      setToast({ message: `Paid amount (₹${actualAmountPaid}) cannot exceed total bill amount (₹${totalAmount})!`, type: 'error' });
+      return;
+    }
+
+    const validCharges = additionalCharges
+      .filter(c => c.name && c.name.trim().length > 0 && Number(c.amount) > 0)
+      .map(c => ({
+        name: c.name.trim(),
+        quantity: Number(c.quantity) > 0 ? Number(c.quantity) : 1,
+        rate: Number(c.rate) >= 0 ? Number(c.rate) : 0,
+        amount: Number(c.amount) || 0
+      }));
 
     setFormLoading(true);
     try {
@@ -190,12 +239,8 @@ const ShopPurchasePage = () => {
         supplierPhone: supplierPhone.trim(),
         items: validFilledItems,
         itemsSubtotal,
-        additionalCharges: additionalChargesList,
+        additionalCharges: validCharges,
         additionalChargesTotal,
-        transportCharges: transportVal,
-        packagingCharges: packagingVal,
-        countingCharges: countingVal,
-        otherCharges: otherVal,
         totalAmount,
         amountPaid: actualAmountPaid,
         paymentStatus: pendingAmount === 0 ? 'Paid' : (actualAmountPaid === 0 ? 'Pending' : 'Partial'),
@@ -203,20 +248,21 @@ const ShopPurchasePage = () => {
         date
       };
 
-      await API.post('/purchases', payload);
+      const res = await API.post('/purchases', payload);
       setToast({ message: 'Shop purchase saved! Product inventory stock increased automatically.', type: 'success' });
       
+      // Auto open official purchase bill voucher for review & printing
+      if (res.data) {
+        setSelectedPurchase(res.data);
+      }
+
       // Reset Form
       setSupplierName('');
       setSupplierPhone('');
       setRemarks('');
       setAmountPaidInput('');
       setBillNumber('');
-      setTransportCharges('');
-      setPackagingCharges('');
-      setCountingCharges('');
-      setOtherCharges('');
-      setOtherChargesRemark('');
+      setAdditionalCharges([]);
       setItems([createEmptyRow(), createEmptyRow(), createEmptyRow(), createEmptyRow()]);
 
       fetchPurchases();
@@ -256,13 +302,26 @@ const ShopPurchasePage = () => {
             </div>
 
             <div className="text-right">
-              <span className="text-xs uppercase font-extrabold text-slate-500 block mb-1">PURCHASE BILL #</span>
+              <div className="flex items-center justify-end gap-1.5 mb-1">
+                <span className="text-xs uppercase font-extrabold text-slate-700 dark:text-slate-300">
+                  PURCHASE BILL # <span className="text-rose-500 font-black">*</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBillNumber('NO')}
+                  className="text-[10px] font-extrabold bg-amber-100 hover:bg-amber-200 dark:bg-amber-950 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded border border-amber-300 transition"
+                  title="If supplier gave no bill, click to enter 'NO'"
+                >
+                  Set "NO"
+                </button>
+              </div>
               <input
                 type="text"
+                required
                 value={billNumber}
                 onChange={(e) => setBillNumber(e.target.value)}
-                placeholder="Bill No"
-                className="text-right font-mono font-bold text-sm text-blue-700 dark:text-blue-400 bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded border border-slate-300 dark:border-slate-700 outline-none w-44 placeholder:text-slate-400 placeholder:font-normal placeholder:text-xs"
+                placeholder="Bill No (or NO) *"
+                className="text-right font-mono font-bold text-sm text-blue-700 dark:text-blue-400 bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded border border-slate-300 dark:border-slate-700 outline-none w-48 placeholder:text-slate-400 placeholder:font-normal placeholder:text-xs"
               />
             </div>
           </div>
@@ -476,100 +535,173 @@ const ShopPurchasePage = () => {
             </div>
           </div>
 
-          {/* Additional Charges Section (Transport, Packaging, Counting, etc.) */}
-          <div className="bg-blue-50/60 dark:bg-blue-950/20 border-2 border-blue-200 dark:border-blue-900/60 rounded-xl p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-blue-200/80 dark:border-blue-800/60 pb-2">
-              <div className="flex items-center gap-2">
-                <span className="p-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 font-bold text-[10px] uppercase font-mono tracking-wider">
-                  + EXTRA CHARGES
-                </span>
-                <h3 className="font-heading font-black text-xs sm:text-sm text-slate-900 dark:text-white uppercase tracking-wide">
-                  Additional Charges (Transport, Packaging, Counting)
-                </h3>
-              </div>
-              <div className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300">
-                Total Extra Charges: <span className="text-blue-700 dark:text-blue-400 font-extrabold text-sm">{formatCurrency(additionalChargesTotal)}</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* 1. Transport Charges */}
-              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-blue-200 dark:border-blue-900/50 shadow-sm">
-                <label className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  <span>🚚 Transport / Freight</span>
-                  <span className="text-[10px] text-blue-500 font-mono">₹</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={transportCharges}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setTransportCharges(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                />
-              </div>
-
-              {/* 2. Packaging Charges */}
-              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-blue-200 dark:border-blue-900/50 shadow-sm">
-                <label className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  <span>📦 Packaging / Bags</span>
-                  <span className="text-[10px] text-blue-500 font-mono">₹</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={packagingCharges}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setPackagingCharges(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                />
-              </div>
-
-              {/* 3. Counting Charges */}
-              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-blue-200 dark:border-blue-900/50 shadow-sm">
-                <label className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  <span>🔢 Counting / Labour</span>
-                  <span className="text-[10px] text-blue-500 font-mono">₹</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={countingCharges}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setCountingCharges(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                />
-              </div>
-
-              {/* 4. Other Additional Charges */}
-              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-blue-200 dark:border-blue-900/50 shadow-sm">
-                <label className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  <span>➕ Other / Misc</span>
-                  <span className="text-[10px] text-blue-500 font-mono">₹</span>
-                </label>
-                <div className="flex gap-1.5">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={otherCharges}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setOtherCharges(e.target.value)}
-                    className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Note"
-                    value={otherChargesRemark}
-                    onChange={(e) => setOtherChargesRemark(e.target.value)}
-                    className="w-1/2 px-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-[11px] text-slate-700 dark:text-slate-300 outline-none"
-                  />
+          {/* Dynamic Quantity-Based Additional Charges Section */}
+          <div className="bg-blue-50/70 dark:bg-blue-950/30 border-2 border-blue-200 dark:border-blue-900/60 rounded-xl p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-blue-200/80 dark:border-blue-800/60 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 font-bold text-[10px] uppercase font-mono tracking-wider">
+                    + EXTRA PROCUREMENT CHARGES
+                  </span>
+                  <h3 className="font-heading font-black text-xs sm:text-sm text-slate-900 dark:text-white uppercase tracking-wide">
+                    Additional Charges (Grading, Counting, Transport, etc.)
+                  </h3>
                 </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Quantity × Price/Rate (e.g. 300 coconuts × ₹0.145 grading) or direct flat amount.
+                </p>
+              </div>
+
+              <div className="text-right">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block">Charges Total</span>
+                <span className="text-blue-700 dark:text-blue-400 font-black font-mono text-base">
+                  +{formatCurrency(additionalChargesTotal)}
+                </span>
               </div>
             </div>
+
+            {/* Quick 1-Click Preset Buttons */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 mr-1">Quick Add:</span>
+              <button
+                type="button"
+                onClick={() => handleAddCharge('Grading')}
+                className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold transition shadow-sm"
+              >
+                + Grading
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddCharge('Counting')}
+                className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold transition shadow-sm"
+              >
+                + Counting
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddCharge('Transport / Freight')}
+                className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold transition shadow-sm"
+              >
+                + Transport
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddCharge('Packaging / Bags')}
+                className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold transition shadow-sm"
+              >
+                + Packaging
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddCharge('Loading / Unloading')}
+                className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold transition shadow-sm"
+              >
+                + Labour
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddCharge('')}
+                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Custom Charge Row</span>
+              </button>
+            </div>
+
+            {/* Additional Charges Table */}
+            {additionalCharges.length > 0 ? (
+              <div className="overflow-x-auto border border-blue-200 dark:border-blue-800/80 rounded-lg bg-white dark:bg-slate-800 shadow-sm mt-2">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wider divide-x divide-slate-700">
+                      <th className="py-2 px-2.5 w-10 text-center">#</th>
+                      <th className="py-2 px-3 min-w-[200px]">Charge Name (e.g. Grading, Transport)</th>
+                      <th className="py-2 px-3 w-28 text-center">Quantity</th>
+                      <th className="py-2 px-3 w-32 text-center">Rate / Price (₹)</th>
+                      <th className="py-2 px-3 w-32 text-right">Total (₹)</th>
+                      <th className="py-2 px-2.5 w-10 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-blue-100 dark:divide-slate-700 text-xs">
+                    {additionalCharges.map((ch, idx) => (
+                      <tr key={idx} className="hover:bg-blue-50/50 dark:hover:bg-slate-700/40">
+                        <td className="py-1.5 px-2 text-center font-bold text-slate-500 bg-slate-50 dark:bg-slate-900/50">
+                          {idx + 1}
+                        </td>
+
+                        {/* Charge Name */}
+                        <td className="py-1 px-2">
+                          <input
+                            type="text"
+                            placeholder="e.g. Grading / Counting / Transport"
+                            value={ch.name}
+                            onChange={(e) => handleChargeChange(idx, 'name', e.target.value)}
+                            className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </td>
+
+                        {/* Quantity */}
+                        <td className="py-1 px-2 text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Qty (e.g. 300)"
+                            value={ch.quantity}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleChargeChange(idx, 'quantity', e.target.value)}
+                            className="w-full px-1.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs text-center font-mono font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </td>
+
+                        {/* Rate / Unit Price (Fine decimal support like 0.145) */}
+                        <td className="py-1 px-2 text-center">
+                          <input
+                            type="text"
+                            placeholder="Rate (e.g. 0.145)"
+                            value={ch.rate}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleChargeChange(idx, 'rate', e.target.value)}
+                            className="w-full px-1.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs text-center font-mono font-bold text-blue-700 dark:text-blue-300 outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </td>
+
+                        {/* Calculated or Flat Amount */}
+                        <td className="py-1 px-2 text-right">
+                          <div className="flex items-center justify-end gap-1 font-mono">
+                            <span className="text-[10px] text-slate-400 font-sans">₹</span>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              placeholder="0.00"
+                              value={ch.amount}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => handleChargeChange(idx, 'amount', e.target.value)}
+                              className="w-24 px-1.5 py-1 bg-blue-50 dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded text-xs text-right font-black text-blue-800 dark:text-blue-200 outline-none"
+                            />
+                          </div>
+                        </td>
+
+                        {/* Action */}
+                        <td className="py-1 px-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCharge(idx)}
+                            className="p-1 text-slate-400 hover:text-rose-600 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-3 px-4 bg-white/60 dark:bg-slate-800/60 border border-dashed border-blue-200 dark:border-blue-800/80 rounded-lg text-center text-xs text-slate-500">
+                No extra charges added. Click any quick button above like <b className="text-blue-700 dark:text-blue-400">+ Grading</b> or <b className="text-blue-700 dark:text-blue-400">+ Counting</b> to add quantity-based charges (e.g. 300 coconuts @ ₹0.145).
+              </div>
+            )}
           </div>
 
           {/* Payment & Remarks Bottom Grid */}
@@ -600,9 +732,14 @@ const ShopPurchasePage = () => {
 
               {paymentStatus === 'Partial' && (
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                    Amount Paid to Supplier Now (₹)
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">
+                      Amount Paid to Supplier Now (₹)
+                    </label>
+                    <span className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400">
+                      Max: {formatCurrency(totalAmount)}
+                    </span>
+                  </div>
                   <input
                     type="number"
                     min="0"
@@ -610,7 +747,14 @@ const ShopPurchasePage = () => {
                     placeholder="0"
                     value={amountPaidInput}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => setAmountPaidInput(e.target.value)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (val > totalAmount) {
+                        setAmountPaidInput(totalAmount);
+                      } else {
+                        setAmountPaidInput(e.target.value);
+                      }
+                    }}
                     className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-xs rounded border border-slate-300 font-bold outline-none"
                   />
                 </div>
@@ -640,33 +784,17 @@ const ShopPurchasePage = () => {
               {additionalChargesTotal > 0 && (
                 <div className="space-y-1 py-1 border-t border-dashed border-blue-200 dark:border-blue-800 text-[11px]">
                   <div className="flex justify-between font-bold text-blue-700 dark:text-blue-400">
-                    <span>+ Additional Charges:</span>
+                    <span>+ Extra Charges ({additionalCharges.filter(c => c.name && Number(c.amount) > 0).length}):</span>
                     <span>+{formatCurrency(additionalChargesTotal)}</span>
                   </div>
-                  {transportVal > 0 && (
-                    <div className="flex justify-between text-slate-500 pl-2">
-                      <span>• Transport / Freight:</span>
-                      <span>+{formatCurrency(transportVal)}</span>
+                  {additionalCharges.filter(c => c.name && Number(c.amount) > 0).map((ch, chIdx) => (
+                    <div key={chIdx} className="flex justify-between text-slate-500 pl-2">
+                      <span>
+                        • {ch.name} {Number(ch.quantity) > 0 && Number(ch.rate) > 0 ? `(${ch.quantity} @ ₹${ch.rate})` : ''}:
+                      </span>
+                      <span>+{formatCurrency(ch.amount)}</span>
                     </div>
-                  )}
-                  {packagingVal > 0 && (
-                    <div className="flex justify-between text-slate-500 pl-2">
-                      <span>• Packaging / Bags:</span>
-                      <span>+{formatCurrency(packagingVal)}</span>
-                    </div>
-                  )}
-                  {countingVal > 0 && (
-                    <div className="flex justify-between text-slate-500 pl-2">
-                      <span>• Counting / Labour:</span>
-                      <span>+{formatCurrency(countingVal)}</span>
-                    </div>
-                  )}
-                  {otherVal > 0 && (
-                    <div className="flex justify-between text-slate-500 pl-2">
-                      <span>• Other ({otherChargesRemark || 'Misc'}):</span>
-                      <span>+{formatCurrency(otherVal)}</span>
-                    </div>
-                  )}
+                  ))}
                 </div>
               )}
 
@@ -733,6 +861,7 @@ const ShopPurchasePage = () => {
                   <th className="py-2.5 px-3">Paid / Due</th>
                   <th className="py-2.5 px-3">Status</th>
                   <th className="py-2.5 px-3">Remarks</th>
+                  <th className="py-2.5 px-3 text-center w-28">Bill Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-slate-200 dark:divide-slate-700 divide-x divide-slate-200 dark:divide-slate-700 text-xs font-medium">
@@ -759,11 +888,22 @@ const ShopPurchasePage = () => {
                       </td>
                       <td className="py-2.5 px-3 font-bold">{p.paymentStatus}</td>
                       <td className="py-2.5 px-3 text-slate-500">{p.remarks || '-'}</td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPurchase(p)}
+                          className="px-2.5 py-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-950 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded font-bold text-xs flex items-center justify-center gap-1 mx-auto transition"
+                          title="View Official Purchase Bill"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View Bill</span>
+                        </button>
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="7" className="py-8 text-center text-slate-400">No shop purchases recorded yet</td>
+                    <td colSpan="8" className="py-8 text-center text-slate-400">No shop purchases recorded yet</td>
                   </tr>
                 )}
               </tbody>
@@ -773,6 +913,14 @@ const ShopPurchasePage = () => {
         </div>
 
       </main>
+
+      {/* Official Purchase Bill Viewer & Printable Voucher Modal */}
+      <PurchaseBillModal
+        isOpen={!!selectedPurchase}
+        onClose={() => setSelectedPurchase(null)}
+        purchase={selectedPurchase}
+        settings={settings}
+      />
 
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
     </div>

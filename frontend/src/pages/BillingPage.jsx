@@ -220,6 +220,11 @@ const BillingPage = () => {
       return;
     }
 
+    if (actualAmountPaid > grandTotal) {
+      setToast({ message: `Customer cannot pay more than the total bill amount (${formatCurrency(grandTotal)})!`, type: 'error' });
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = {
@@ -627,15 +632,28 @@ const BillingPage = () => {
 
               {paymentStatus === 'Partial' && (
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                    Amount Paid Today (₹)
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">
+                      Amount Paid Today (₹)
+                    </label>
+                    <span className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400">
+                      Max: {formatCurrency(grandTotal)}
+                    </span>
+                  </div>
                   <input
                     type="number"
                     min="0"
                     max={grandTotal}
                     value={amountPaidInput}
-                    onChange={(e) => setAmountPaidInput(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (val > grandTotal) {
+                        setAmountPaidInput(grandTotal);
+                      } else {
+                        setAmountPaidInput(e.target.value);
+                      }
+                    }}
                     className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 text-xs rounded border border-slate-300 font-bold outline-none"
                   />
                 </div>

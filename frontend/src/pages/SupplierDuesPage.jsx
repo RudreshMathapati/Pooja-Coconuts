@@ -50,10 +50,14 @@ const SupplierDuesPage = () => {
 
   const handlePaySupplierSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedSupplier) return;
     const val = Number(amountPaid);
     if (!val || val <= 0) {
       setToast({ message: 'Enter a valid amount to pay', type: 'error' });
+      return;
+    }
+    const maxPayable = (purchaseType === 'Shop' ? selectedSupplier?.shopPendingAmount : selectedSupplier?.homePendingAmount) || 0;
+    if (val > maxPayable) {
+      setToast({ message: `Cannot pay more than the outstanding pending due of ${formatCurrency(maxPayable)}!`, type: 'error' });
       return;
     }
 
@@ -239,14 +243,28 @@ const SupplierDuesPage = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Amount Paid (₹) *</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Amount Paid (₹) *</label>
+              <span className="text-[10px] font-extrabold text-rose-600">
+                Max: {formatCurrency(purchaseType === 'Shop' ? selectedSupplier?.shopPendingAmount : selectedSupplier?.homePendingAmount)}
+              </span>
+            </div>
             <input
               type="number"
               min="1"
               max={purchaseType === 'Shop' ? selectedSupplier?.shopPendingAmount : selectedSupplier?.homePendingAmount}
               placeholder="Enter amount paid to supplier"
               value={amountPaid}
-              onChange={(e) => setAmountPaid(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => {
+                const maxVal = Number(purchaseType === 'Shop' ? selectedSupplier?.shopPendingAmount : selectedSupplier?.homePendingAmount) || 0;
+                const val = Number(e.target.value);
+                if (val > maxVal) {
+                  setAmountPaid(maxVal);
+                } else {
+                  setAmountPaid(e.target.value);
+                }
+              }}
               className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 text-sm rounded-xl border font-bold text-rose-600 outline-none"
               required
             />

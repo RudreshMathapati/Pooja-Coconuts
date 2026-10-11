@@ -11,6 +11,8 @@ const purchaseItemSchema = new mongoose.Schema({
 
 const additionalChargeSchema = new mongoose.Schema({
   name: { type: String, required: true },
+  quantity: { type: Number, default: 1 },
+  rate: { type: Number, default: 0 },
   amount: { type: Number, required: true, min: 0 }
 });
 

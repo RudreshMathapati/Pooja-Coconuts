@@ -62,6 +62,11 @@ const SupplierDetailPage = () => {
       setToast({ message: 'Enter a valid payment amount', type: 'error' });
       return;
     }
+    const maxDue = (activeTab === 'SHOP' ? data?.shopSummary?.pendingAmount : data?.homeSummary?.pendingAmount) || 0;
+    if (val > maxDue) {
+      setToast({ message: `Cannot pay more than the outstanding pending due of ${formatCurrency(maxDue)}!`, type: 'error' });
+      return;
+    }
     setPayLoading(true);
     try {
       await API.post('/payments/supplier', {
@@ -434,7 +439,7 @@ const SupplierDetailPage = () => {
                                     {entry.additionalCharges && entry.additionalCharges.length > 0 && entry.additionalCharges.map((ch, chIdx) => (
                                       <tr key={`ch-${chIdx}`} className="bg-amber-50/60 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200">
                                         <td colSpan={4} className="py-2 px-4 font-bold text-[11px] text-amber-800 dark:text-amber-300">
-                                          + {ch.name}
+                                          + {ch.name} {Number(ch.quantity) > 0 && Number(ch.rate) > 0 ? `(${ch.quantity} @ ₹${ch.rate})` : ''}
                                         </td>
                                         <td className="py-2 px-4 text-right font-black font-mono text-amber-700 dark:text-amber-400">
                                           +{formatCurrency(ch.amount)}
@@ -510,7 +515,12 @@ const SupplierDetailPage = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Amount Paid (₹) *</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Amount Paid (₹) *</label>
+              <span className="text-[10px] font-extrabold text-rose-600">
+                Max: {formatCurrency(pendingDue)}
+              </span>
+            </div>
             <input
               type="number"
               required
@@ -518,7 +528,15 @@ const SupplierDetailPage = () => {
               max={pendingDue}
               placeholder="e.g. 50000"
               value={payAmount}
-              onChange={(e) => setPayAmount(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                if (val > pendingDue) {
+                  setPayAmount(pendingDue);
+                } else {
+                  setPayAmount(e.target.value);
+                }
+              }}
               className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 text-sm rounded-xl border border-slate-200 dark:border-slate-700 outline-none font-bold text-rose-600"
             />
           </div>

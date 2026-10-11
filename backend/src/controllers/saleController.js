@@ -192,7 +192,10 @@ const createSale = async (req, res, next) => {
     }
 
     // 2. Calculate paid & pending amounts
-    const paidVal = paymentStatus === 'Paid' ? grandTotal : (Number(amountPaid) || 0);
+    let paidVal = paymentStatus === 'Paid' ? grandTotal : Math.max(0, Number(amountPaid) || 0);
+    if (paidVal > grandTotal) {
+      paidVal = grandTotal;
+    }
     const pendingVal = Math.max(0, grandTotal - paidVal);
     const finalStatus = pendingVal === 0 ? 'Paid' : (paidVal === 0 ? 'Pending' : 'Partial');
 

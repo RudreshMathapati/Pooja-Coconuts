@@ -76,6 +76,10 @@ const collectCustomerPayment = async (req, res, next) => {
       return res.status(400).json({ message: 'Amount received must be greater than zero' });
     }
 
+    if (recVal > customer.pendingAmount) {
+      return res.status(400).json({ message: `Payment cannot exceed customer's outstanding due of ₹${customer.pendingAmount}` });
+    }
+
     customer.pendingAmount = Math.max(0, customer.pendingAmount - recVal);
     customer.totalPaid += recVal;
     await customer.save();
@@ -119,6 +123,11 @@ const paySupplier = async (req, res, next) => {
     }
 
     const pType = purchaseType === 'Home' ? 'Home' : 'Shop';
+    const maxPayable = pType === 'Shop' ? supplier.shopPendingAmount : supplier.homePendingAmount;
+
+    if (payVal > maxPayable) {
+      return res.status(400).json({ message: `Payment cannot exceed supplier's outstanding due of ₹${maxPayable}` });
+    }
 
     if (pType === 'Shop') {
       supplier.shopPendingAmount = Math.max(0, supplier.shopPendingAmount - payVal);
